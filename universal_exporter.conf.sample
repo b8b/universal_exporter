@@ -1,0 +1,38 @@
+ktor {
+    deployment {
+        port = 8080
+    }
+
+    application {
+        modules = [ AppKt.module ]
+    }
+}
+
+rabbitmq {
+    dev = [
+        {
+            url = "http://dev-rabbit01:15672/api/"
+            username = "prom"
+            password = "changeit"
+        }
+        {
+            # fallback node
+            url = "http://dev-rabbit02:15672/api/"
+            username = "prom"
+            password = "changeit"
+        }
+    ]
+    prod = [
+        {
+            url = "http://prod-rabbit01:15672/api/"
+            username = "prom"
+            password = "changeit"
+        }
+        {
+            # fallback node
+            url = "http://prod-rabbit02:15672/api/"
+            username = "prom"
+            password = "changeit"
+        }
+    ]
+}
