@@ -7,7 +7,7 @@ plugins {
     application
     idea
 
-    val kotlinVersion = "1.1.61"
+    val kotlinVersion = "1.2.0"
     kotlin("jvm") version kotlinVersion
     kotlin("kapt") version kotlinVersion
 }
@@ -24,14 +24,29 @@ dependencies {
     val log4jVersion = "2.8.2"
     val ktorVersion = "0.9.0"
 
-    compile("org.jetbrains.kotlin:kotlin-stdlib-jre8")
+    compile("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+    compile("org.jetbrains.kotlin:kotlin-reflect")
 
-    compile("io.ktor:ktor-server-netty:${ktorVersion}")
-    compile("io.ktor:ktor-client-cio:${ktorVersion}")
-    compile("io.ktor:ktor-jackson:${ktorVersion}")
-    compile("io.ktor:ktor-html-builder:${ktorVersion}")
+    compile("io.ktor:ktor-server-jetty:${ktorVersion}") {
+        exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre8")
+        exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre7")
+    }
+    compile("io.ktor:ktor-client-cio:${ktorVersion}") {
+        exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre8")
+        exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre7")
+    }
+    compile("io.ktor:ktor-jackson:${ktorVersion}") {
+        exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre8")
+        exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre7")
+    }
+    compile("io.ktor:ktor-html-builder:${ktorVersion}") {
+        exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre8")
+        exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre7")
+    }
     compile("io.ktor:ktor-locations:${ktorVersion}") {
         exclude("io.ktor", "ktor-auth")
+        exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre8")
+        exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre7")
     }
 
     compile("org.apache.logging.log4j:log4j-slf4j-impl:${log4jVersion}")
@@ -40,11 +55,13 @@ dependencies {
     testCompile("junit:junit:4.12")
     testCompile("io.ktor:ktor-server-tests:${ktorVersion}") {
         exclude("ch.qos.logback", "logback-classic")
+        exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre8")
+        exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre7")
     }
 }
 
 application {
-    mainClassName = "AppKt"
+    mainClassName = "exporter.AppKt"
 }
 
 with(tasks["run"] as JavaExec) {

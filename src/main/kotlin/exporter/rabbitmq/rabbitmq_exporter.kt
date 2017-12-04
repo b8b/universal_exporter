@@ -1,7 +1,7 @@
-package exporter
+package exporter.rabbitmq
 
-import MetricType
-import PrometheusOutput
+import exporter.MetricType
+import exporter.PrometheusOutput
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.ktor.application.call
@@ -18,7 +18,7 @@ import io.ktor.locations.location
 import io.ktor.response.contentType
 import io.ktor.response.respond
 import io.ktor.routing.Route
-import metricValue
+import exporter.metricValue
 import java.io.IOException
 import java.net.URL
 import java.util.*
