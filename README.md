@@ -2,30 +2,59 @@
 
 Collection of metrics exporters for prometheus.
  
-## Motivation
+## Status
+
+Only some metrics of interest are exported. It should be
+ easy to add (and remove!) metrics in the implementation.
+ It is not a goal to have an exhaustive set of metrics.
+
+* RabbitMQ exporter using admin interface (rabbit plugin)
+* HAProxy exporter using CSV status page via http
+
+## Motivation / Architecture
 
 Often it is convenient to run an exporter instance
-per monitored service instance so that the exporter
-can communicate tightly (and securely) with the 
-service and export it's metrics. 
+ per monitored service instance so that the exporter
+ can communicate tightly (and securely) with the 
+ service and export it's metrics. 
 
 However, there are several situations where it is
-more convenient to run a single exporter instance
-that it capable of connecting to multiple service
-instances.
+ more convenient to run a single exporter instance
+ that is capable of connecting to multiple service
+ instances.
 
- * monitoring of unmodifiable applicance like systems
- * monitoring a high number of service instances
+* monitoring of unmodifiable applicance like systems
+* monitoring a high number of service instances
+
+Running on the JVM, this exporter consumes a lot more 
+ resources than alternatives available (e.g. haproxy_exporter).
+
+However, the single threaded architecture together with stream
+ processing and chunked encoding make sure the resource 
+ consumption stays at the same level regardless of how many 
+ instances are monitored.
 
 ## Running with gradle 
 
     cp universal_exporter.conf.sample universal_exporter.con
     ./gradlew run
 
-## Configure prometheus
+## Configuration
 
-    - job_name: 'rabbitmq'
+The file universal_exporter.conf.sample is maintained as
+ reference. Sample configs for all exporters are added there.
+
+## Configure prometheus (sample)
+
+    - job_name: 'rabbitmq-dev'
       metrics_path: '/metrics/rabbitmq/dev'
+      honor_labels: true
+      static_configs:
+        - targets:
+          - localhost:8080
+
+    - job_name: 'rabbitmq-prod'
+      metrics_path: '/metrics/rabbitmq/prod'
       honor_labels: true
       static_configs:
         - targets:
@@ -35,18 +64,20 @@ instances.
 
 ### Implement additional exporters
 
- * haproxy
- * nginx
- * ktor
+* nginx
+* ktor
  
 ### Implement additional output formats
 
- * ganglia xml
- * nagios
- * csv
+* ganglia xml
+* nagios
+* csv
 
 ### Aggregated metrics endpoint
 
- * export all instances via /metrics/_collector_
- * export all metrics via /metrics
+* export all instances via /metrics/_collector_
+* export all metrics via /metrics
 
+### Prometheus autodiscovery
+
+* checkout how to integrate autodiscovery
