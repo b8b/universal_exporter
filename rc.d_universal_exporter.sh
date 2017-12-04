@@ -14,7 +14,7 @@
 # universal_exporter_javavm (string):     Set path to java 
 #                                         Default is "@PREFIX@/openjdk8/bin/java"
 # universal_exporter_javaargs (string):   Set additional jvm arguments
-#                                         Default is "-XX:+UseSerialGC -Xmx20m"
+#                                         Default is "-XX:CICompilerCount=2 -XX:+UseSerialGC -Xmx20m"
 # universal_exporter_args (string):       Set additional command line arguments
 #                                         Default is "-config=@PREFIX@/etc/universal_exporter.conf"
 
@@ -28,7 +28,7 @@ load_rc_config $name
 : ${universal_exporter_enable:="NO"}
 : ${universal_exporter_daemonargs:="-u prometheus"}
 : ${universal_exporter_javavm:="@PREFIX@/openjdk8/bin/java"}
-: ${universal_exporter_javaargs:="-XX:+UseSerialGC -Xmx20m"}
+: ${universal_exporter_javaargs:="-XX:CICompilerCount=2 -XX:+UseSerialGC -Xmx20m"}
 : ${universal_exporter_args:="-config=@PREFIX@/etc/universal_exporter.conf"}
 
 pidfile=/var/run/universal_exporter.pid

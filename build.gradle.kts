@@ -27,7 +27,7 @@ dependencies {
     compile("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     compile("org.jetbrains.kotlin:kotlin-reflect")
 
-    compile("io.ktor:ktor-server-jetty:${ktorVersion}") {
+    compile("io.ktor:ktor-server-netty:${ktorVersion}") {
         exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre8")
         exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre7")
     }

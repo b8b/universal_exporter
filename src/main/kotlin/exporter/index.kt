@@ -6,7 +6,7 @@ import io.ktor.routing.Route
 import io.ktor.routing.get
 import kotlinx.html.*
 
-fun Route.index() {
+fun Route.index(exporters: List<String>) {
     get("/") {
         call.respondHtml {
             attributes["lang"] = "en"
@@ -15,14 +15,12 @@ fun Route.index() {
             }
             body {
                 h1 { +"Universal Exporter" }
-                p {
-                    a(href = "/metrics/rabbitmq") {
-                        +"RabbitMQ Metrics"
-                    }
-                }
-                p {
-                    a(href = "/metrics/haproxy") {
-                        +"HAProxy Metrics"
+                exporters.forEach {exporter ->
+                    p {
+                        //TODO get instances from config
+                        a(href = "$exporter/{instance}") {
+                            +"$exporter/{instance}"
+                        }
                     }
                 }
             }
