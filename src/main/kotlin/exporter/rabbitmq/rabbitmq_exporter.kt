@@ -35,11 +35,10 @@ private data class MessageStats(val ack: Long, val publish: Long)
 
 private data class Queue(
         val vhost: String, val name: String,
-
         val messages: Long,
         val messages_ready: Long,
         val messages_unacknowledged: Long,
-        val head_message_timestamp: Date?,
+        val head_message_timestamp: Long?,
         val message_stats: MessageStats?
 )
 
@@ -89,7 +88,7 @@ fun Route.rabbitmq_exporter(appConfig: ApplicationConfig) {
                             metricValue("queue_messages_unacknowledged", q.messages_unacknowledged, MetricType.Gauge,
                                     "Number of messages delivered to clients but not yet acknowledged.",
                                     *fields),
-                            metricValue("queue_head_message_timestamp", q.head_message_timestamp?.time ?: 0, MetricType.Gauge,
+                            metricValue("queue_head_message_timestamp", q.head_message_timestamp ?: -1L, MetricType.Gauge,
                                     "The timestamp property of the first message in the queue, if present." +
                                             " Timestamps of messages only appear when they are in the paged-in state.",
                                     *fields),
