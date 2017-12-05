@@ -110,6 +110,8 @@ fun Route.haproxy_exporter(appConfig: ApplicationConfig) {
                                         "3xx responses", *fields),
                                 metricValueOrNull("hap_hrsp_4xx", record["hrsp_4xx"], MetricType.Counter,
                                         "4xx responses", *fields),
+                                metricValueOrNull("hap_hrsp_5xx", record["hrsp_5xx"], MetricType.Counter,
+                                        "5xx responses", *fields),
                                 metricValueOrNull("hap_hrsp_other", record["hrsp_other"], MetricType.Counter,
                                         "other responses", *fields)
                         ).filterNotNull().asSequence()
