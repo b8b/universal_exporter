@@ -46,15 +46,15 @@ The file universal_exporter.conf.sample is maintained as
 
 ## Configure prometheus (sample)
 
-    - job_name: 'rabbitmq-dev'
-      metrics_path: '/metrics/rabbitmq/dev'
+    - job_name: 'rabbitmq'
+      metrics_path: '/metrics/rabbitmq'
       honor_labels: true
       static_configs:
         - targets:
           - localhost:8080
 
-    - job_name: 'rabbitmq-prod'
-      metrics_path: '/metrics/rabbitmq/prod'
+    - job_name: 'haproxy'
+      metrics_path: '/metrics/haproxy'
       honor_labels: true
       static_configs:
         - targets:
@@ -64,20 +64,16 @@ The file universal_exporter.conf.sample is maintained as
 
 ### Implement additional exporters
 
-* nginx
-* ktor
- 
+* ganglia (with hsflowd)
+* memcached
+* nginx (low - support sflow via ganglia)
+
 ### Implement additional output formats
 
 * ganglia xml
-* nagios
-* csv
+* nagios (low)
+* csv (low)
 
 ### Aggregated metrics endpoint
 
-* export all instances via /metrics/_collector_
 * export all metrics via /metrics
-
-### Prometheus autodiscovery
-
-* checkout how to integrate autodiscovery

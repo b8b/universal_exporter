@@ -3,7 +3,8 @@ package exporter
 enum class MetricType {
     Counter,
     Gauge,
-    Summary
+    Summary,
+    Histogram
 }
 
 data class MetricValue(
@@ -12,16 +13,27 @@ data class MetricValue(
         val type: MetricType,
         val description: String?,
         val ts: Long? = null,
-        val fields: Array<out Pair<String, String>>? = null
+        val fields: List<Pair<String, String>>
 )
 
-fun metricValue(name: String, value: Number, type: MetricType,
-                description: String? = null,
-                ts: Long? = null,
-                vararg fields: Pair<String, String>) =
-        MetricValue(name, value, type, description, ts, fields)
+interface MetricWriter {
 
-fun metricValue(name: String, value: Number, type: MetricType,
-                description: String? = null,
-                vararg fields: Pair<String, String>) =
-        MetricValue(name, value, type, description, null, fields)
+    suspend fun metricValue(v: MetricValue)
+
+    suspend fun metricValue(name: String, value: Number, type: MetricType,
+                    description: String? = null,
+                    ts: Long? = null,
+                    vararg fields: Pair<String, String>) =
+            metricValue(MetricValue(name, value, type, description, ts, fields.toList()))
+
+    suspend fun metricValue(name: String, value: Number, type: MetricType,
+                    description: String? = null,
+                    vararg fields: Pair<String, String>) =
+            metricValue(MetricValue(name, value, type, description, null, fields.toList()))
+
+}
+
+interface Exporter {
+    val instance: String
+    suspend fun export(writer: MetricWriter)
+}
