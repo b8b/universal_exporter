@@ -45,3 +45,19 @@ haproxy [
         url = "http://127.0.0.1:89/"
     }
 ]
+
+ganglia = [
+    {
+        instance = "datacenter1"
+        port = 8649
+        endpoints = [
+            {
+                host = "gmond01"
+            }
+            {
+                # fallback node
+                host = "gmond02"
+            }
+        ]
+    }
+]

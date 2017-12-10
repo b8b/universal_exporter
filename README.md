@@ -10,6 +10,7 @@ Only some metrics of interest are exported. It should be
 
 * RabbitMQ exporter using admin interface (rabbit plugin)
 * HAProxy exporter using CSV status page via http
+* Ganglia/hsflowd exporter
 
 ## Motivation / Architecture
 
@@ -64,7 +65,6 @@ The file universal_exporter.conf.sample is maintained as
 
 ### Implement additional exporters
 
-* ganglia (with hsflowd)
 * memcached
 * nginx (low - support sflow via ganglia)
 

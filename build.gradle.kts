@@ -27,7 +27,9 @@ dependencies {
     compile("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     compile("org.jetbrains.kotlin:kotlin-reflect")
 
-    compile("io.ktor:ktor-server-netty:${ktorVersion}") {
+    compile("com.fasterxml:aalto-xml:1.0.0")
+
+    compile("io.ktor:ktor-server-cio:${ktorVersion}") {
         exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre8")
         exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre7")
     }

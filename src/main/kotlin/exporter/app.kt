@@ -1,5 +1,6 @@
 package exporter
 
+import exporter.ganglia.GangliaExporter
 import exporter.haproxy.HAProxyExporter
 import exporter.rabbitmq.RabbitMQExporter
 import io.ktor.application.Application
@@ -15,9 +16,9 @@ import io.ktor.routing.Route
 import io.ktor.routing.Routing
 import io.ktor.routing.application
 import io.ktor.routing.get
+import io.ktor.server.cio.CIOApplicationEngine
 import io.ktor.server.engine.commandLineEnvironment
-import io.ktor.server.engine.embeddedServer
-import io.ktor.server.netty.Netty
+import java.util.concurrent.TimeUnit
 
 private fun ApplicationConfig.configListOrNull(path: String) = try {
     this.configList(path)
@@ -56,6 +57,10 @@ fun Application.module() {
             RabbitMQExporter(cfg, cfg.configListOrNull("endpoints"))
         }
 
+        exporter("ganglia") { cfg ->
+            GangliaExporter(cfg, cfg.configListOrNull("endpoints"))
+        }
+
         //build 2 level toc
         val exporters = children.flatMap { route -> route.children.map(Route::toString) }
         index(exporters)
@@ -63,9 +68,16 @@ fun Application.module() {
 }
 
 fun main(args: Array<String>) {
-    embeddedServer(Netty, commandLineEnvironment(args)) {
+    val applicationEnvironment = commandLineEnvironment(args)
+    val engine = CIOApplicationEngine(applicationEnvironment) {
         callGroupSize = 1
         workerGroupSize = 1
         connectionGroupSize = 1
-    }.start()
+    }
+    Runtime.getRuntime().addShutdownHook(object : Thread() {
+        override fun run() {
+            engine.stop(3, 5, TimeUnit.SECONDS)
+        }
+    })
+    engine.start(true)
 }
