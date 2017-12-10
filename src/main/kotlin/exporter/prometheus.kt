@@ -1,13 +1,14 @@
 package exporter
 
 import io.ktor.cio.WriteChannel
-import io.ktor.cio.toOutputStream
 import io.ktor.content.OutgoingContent
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.withCharset
 import io.ktor.util.ValuesMap
+import kotlinx.coroutines.experimental.io.ByteBuffer
 import java.io.BufferedWriter
+import java.io.ByteArrayOutputStream
 
 val PROMETHEUS_CONTENT_TYPE = ContentType.Text.Plain
         .withCharset(Charsets.UTF_8)
@@ -102,7 +103,10 @@ fun MetricValue.writeAsPrometheusText(writer: BufferedWriter, withHeader: Boolea
                     writer.write(c.toInt())
                 }
             }
-            writer.write("\",")
+            writer.write("\"")
+            if (pair != fields.last()) {
+                writer.write(",")
+            }
         }
         writer.write("}")
     }
@@ -115,7 +119,7 @@ fun MetricValue.writeAsPrometheusText(writer: BufferedWriter, withHeader: Boolea
     writer.newLine()
 }
 
-private class PrometheusMetricWriter(private val writer: BufferedWriter) : MetricWriter {
+private class PrometheusMetricWriter(private val channel: WriteChannel) : MetricWriter {
 
     private val metricSet = mutableSetOf<String>()
 
@@ -125,8 +129,14 @@ private class PrometheusMetricWriter(private val writer: BufferedWriter) : Metri
             //skip metric
             return
         }
-        v.writeAsPrometheusText(writer, withHeader)
+        val data = ByteArrayOutputStream().use {
+            it.bufferedWriter().use {
+                v.writeAsPrometheusText(it, withHeader)
+            }
+            it.toByteArray()
+        }
         if (withHeader) metricSet.add(v.name)
+        channel.write(ByteBuffer.wrap(data))
     }
 
 }
@@ -138,12 +148,10 @@ class PrometheusOutput(vararg val exporters: Exporter) : OutgoingContent.WriteCh
 
 
     suspend override fun writeTo(channel: WriteChannel) {
-        channel.toOutputStream().use { out ->
-            out.bufferedWriter().use { writer ->
-                val metricWriter = PrometheusMetricWriter(writer)
-                exporters.forEach { exporter ->
-                    exporter.export(metricWriter)
-                }
+        channel.use {
+            val metricWriter = PrometheusMetricWriter(it)
+            exporters.forEach { exporter ->
+                exporter.export(metricWriter)
             }
         }
     }
