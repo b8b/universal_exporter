@@ -3,13 +3,13 @@ package exporter.haproxy
 import exporter.Exporter
 import exporter.MetricType
 import exporter.MetricWriter
-import io.ktor.client.HttpClient
-import io.ktor.client.backend.cio.CIOBackend
-import io.ktor.client.bodyStream
-import io.ktor.client.call.call
-import io.ktor.client.response.HttpResponse
 import io.ktor.config.ApplicationConfig
+import io.ktor.network.sockets.aSocket
+import io.ktor.network.sockets.openReadChannel
+import io.ktor.network.sockets.openWriteChannel
+import kotlinx.coroutines.experimental.io.*
 import java.io.IOException
+import java.net.InetSocketAddress
 import java.net.URL
 
 private suspend fun MetricWriter.metricValueIfNonNull(name: String, value: String?,
@@ -30,25 +30,6 @@ class HAProxyExporter(baseConfig: ApplicationConfig, endpointConfigs: List<Appli
     override val instance = baseConfig.property("instance").getString()
 
     private val configList = endpointConfigs?.map { Config(baseConfig, it) } ?: listOf(Config(baseConfig, baseConfig))
-
-    private suspend fun queryMetrics(): HttpResponse {
-        val client = HttpClient({ CIOBackend() })
-        //TODO query all endpoints concurrently and aggregate metrics
-        throw configList.map { c ->
-            try {
-                return client.call {
-                    url {
-                        scheme = c.url.protocol
-                        host = c.url.host
-                        port = if (c.url.port <= 0) 80 else c.url.port
-                        path = "${c.url.path};csv;norefresh"
-                    }
-                }
-            } catch (ex: IOException) {
-                ex
-            }
-        }.last()
-    }
 
     private suspend fun writeMetrics(writer: MetricWriter, record: Map<String, String>,
                                      vararg fields: Pair<String, String>) {
@@ -91,39 +72,67 @@ class HAProxyExporter(baseConfig: ApplicationConfig, endpointConfigs: List<Appli
                 MetricType.Counter, "other responses", *fields)
     }
 
-    override suspend fun export(writer: MetricWriter) {
-        queryMetrics().use { httpResponse ->
-            if (httpResponse.status.value != 200) {
-                throw RuntimeException("haproxy returned status ${httpResponse.status}")
-            }
-            httpResponse.bodyStream.use { input ->
-                input.bufferedReader().use { reader ->
-                    val inputLines = reader.lineSequence().iterator()
-                    //read column headers on first line
-                    val firstLine = inputLines.next()
-                    val headers = firstLine.trimStart('#')
-                            .splitToSequence(',')
-                            .map { it.trim() }
-                            .toList()
-                    //read values on other lines
-                    inputLines.asSequence().forEach { line ->
-                        val record = line
-                                .splitToSequence(',')
-                                .mapIndexed { i, s -> headers[i] to s.trim() }
-                                .toMap()
-                        val pxname = record["pxname"]
-                        val svname = record["svname"]
-                        if (pxname == null || svname == null) {
-                            return@forEach
-                        }
-                        val fields = when (svname) {
-                            "FRONTEND" -> arrayOf("frontend" to pxname)
-                            "BACKEND" -> arrayOf("backend" to pxname)
-                            else -> arrayOf("backend" to pxname, "server" to svname)
-                        }
-                        writeMetrics(writer, record, *fields, "instance" to instance)
-                    }
+    private suspend fun readHeaders(readChannel: ByteReadChannel) {
+        val delimiter = ByteBuffer.wrap("\r\n".toByteArray())
+        val buffer = ByteArray(1024 * 4)
+        while (true) {
+            val read = readChannel.readUntilDelimiter(delimiter, ByteBuffer.wrap(buffer))
+            if (read < buffer.size) {
+                readChannel.skipDelimiter(delimiter)
+                if (read == 0) {
+                    break
                 }
+            } else {
+                throw IllegalStateException()
+            }
+        }
+    }
+
+    override suspend fun export(writer: MetricWriter) {
+        val (socket, ex) = configList.map { c ->
+            try {
+                val port = if (c.url.port <= 0) 80 else c.url.port
+                aSocket().tcp().connect(InetSocketAddress(c.url.host, port)) to null
+            } catch (ex: IOException) {
+                null to ex
+            }
+        }.last()
+        if (socket == null) {
+            throw ex ?: RuntimeException()
+        }
+        socket.use { socket ->
+            val writeChannel = socket.openWriteChannel(true)
+            writeChannel.writeFully("GET /;csv;norefresh HTTP/1.0\r\n\r\n".toByteArray())
+            val readChannel = socket.openReadChannel()
+            //read http headers
+            readHeaders(readChannel)
+            //read csv headers
+            val firstLine = readChannel.readUTF8Line() ?: throw IllegalStateException()
+            val headers = firstLine.trimStart('#')
+                    .splitToSequence(',')
+                    .map { it.trim() }
+                    .toList()
+            //read csv lines
+            while (true) {
+                val line = readChannel.readUTF8Line()
+                if (line == null || line.isEmpty()) {
+                    break
+                }
+                val record = line
+                        .splitToSequence(',')
+                        .mapIndexed { i, s -> headers[i] to s.trim() }
+                        .toMap()
+                val pxname = record["pxname"]
+                val svname = record["svname"]
+                if (pxname == null || svname == null) {
+                    continue
+                }
+                val fields = when (svname) {
+                    "FRONTEND" -> arrayOf("frontend" to pxname)
+                    "BACKEND" -> arrayOf("backend" to pxname)
+                    else -> arrayOf("backend" to pxname, "server" to svname)
+                }
+                writeMetrics(writer, record, *fields, "instance" to instance)
             }
         }
     }
