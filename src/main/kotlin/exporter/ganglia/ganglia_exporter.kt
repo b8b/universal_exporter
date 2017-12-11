@@ -159,12 +159,19 @@ class GangliaExporter(baseConfig: ApplicationConfig, endpointConfigs: List<Appli
                         }
                     }
                     "METRIC" -> {
+                        var tn = 0L
+                        var tmax = -1L
                         for (i in 0 until reader.attributeCount) {
                             when (reader.getAttributeLocalName(i)) {
                                 "NAME" -> metricInfo.name = reader.getAttributeValue(i)
                                 "VAL" -> metricInfo.value = reader.getAttributeValue(i)
                                 "TYPE" -> metricInfo.type = Type.valueOf(reader.getAttributeValue(i).capitalize())
+                                "TN" -> tn = reader.getAttributeValue(i).toLong()
+                                "TMAX" -> tmax = reader.getAttributeValue(i).toLong()
                             }
+                        }
+                        if (tn > tmax) {
+                            metricInfo.name = null
                         }
                     }
                     "EXTRA_ELEMENT" -> {
