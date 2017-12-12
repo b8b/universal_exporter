@@ -33,20 +33,11 @@ dependencies {
         exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre8")
         exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre7")
     }
-    compile("io.ktor:ktor-client-cio:${ktorVersion}") {
-        exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre8")
-        exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre7")
-    }
     compile("io.ktor:ktor-jackson:${ktorVersion}") {
         exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre8")
         exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre7")
     }
     compile("io.ktor:ktor-html-builder:${ktorVersion}") {
-        exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre8")
-        exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre7")
-    }
-    compile("io.ktor:ktor-locations:${ktorVersion}") {
-        exclude("io.ktor", "ktor-auth")
         exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre8")
         exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre7")
     }
