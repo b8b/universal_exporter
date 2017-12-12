@@ -10,7 +10,6 @@ import io.ktor.config.ApplicationConfig
 import io.ktor.features.CallLogging
 import io.ktor.features.Compression
 import io.ktor.features.DefaultHeaders
-import io.ktor.locations.Locations
 import io.ktor.response.respond
 import io.ktor.routing.Route
 import io.ktor.routing.Routing
@@ -46,7 +45,6 @@ fun Application.module() {
     install(DefaultHeaders)
     install(Compression)
     install(CallLogging)
-    install(Locations)
 
     install(Routing) {
         exporter("haproxy") { cfg ->
