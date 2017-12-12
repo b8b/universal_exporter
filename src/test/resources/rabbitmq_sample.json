@@ -1,0 +1,101 @@
+[
+  {
+    "message_stats": {
+      "publish_in": 410306,
+      "publish_in_details": {
+        "rate": 0.0
+      },
+      "publish_out": 410306,
+      "publish_out_details": {
+        "rate": 0.0
+      }
+    },
+    "name": "Test.exchange",
+    "vhost": "/",
+    "type": "x-consistent-hash",
+    "durable": true,
+    "auto_delete": false,
+    "internal": false,
+    "arguments": {},
+    "policy": "ha-all"
+  },
+  {
+    "memory": 14312,
+    "message_stats": {
+      "ack": 65234,
+      "ack_details": {
+        "rate": 0.0
+      },
+      "deliver": 65235,
+      "deliver_details": {
+        "rate": 0.0
+      },
+      "deliver_get": 65235,
+      "deliver_get_details": {
+        "rate": 0.0
+      },
+      "publish": 65233,
+      "publish_details": {
+        "rate": 0.0
+      },
+      "redeliver": 1,
+      "redeliver_details": {
+        "rate": 0.0
+      }
+    },
+    "messages": 0,
+    "messages_details": {
+      "rate": 0.0
+    },
+    "messages_ready": 0,
+    "messages_ready_details": {
+      "rate": 0.0
+    },
+    "messages_unacknowledged": 0,
+    "messages_unacknowledged_details": {
+      "rate": 0.0
+    },
+    "idle_since": "2017-12-12 18:32:40",
+    "policy": "ha-all-q",
+    "exclusive_consumer_tag": "",
+    "consumers": 1,
+    "slave_nodes": [
+      "rabbit@prod-rabbit01"
+    ],
+    "synchronised_slave_nodes": [
+      "rabbit@prod-rabbit01"
+    ],
+    "backing_queue_status": {
+      "q1": 0,
+      "q2": 0,
+      "delta": [
+        "delta",
+        "undefined",
+        0,
+        "undefined"
+      ],
+      "q3": 0,
+      "q4": 0,
+      "len": 0,
+      "pending_acks": 0,
+      "target_ram_count": "infinity",
+      "ram_msg_count": 0,
+      "ram_ack_count": 0,
+      "next_seq_id": 65234,
+      "persistent_count": 0,
+      "avg_ingress_rate": 0.04079301623562046,
+      "avg_egress_rate": 0.04079301623562046,
+      "avg_ack_ingress_rate": 0.04079301623562046,
+      "avg_ack_egress_rate": 0.04079301623562046,
+      "mirror_seen": 0,
+      "mirror_senders": 2
+    },
+    "status": "running",
+    "name": "Test.queue",
+    "vhost": "/",
+    "durable": true,
+    "auto_delete": false,
+    "arguments": {},
+    "node": "rabbit@prod-rabbit02"
+  }
+]

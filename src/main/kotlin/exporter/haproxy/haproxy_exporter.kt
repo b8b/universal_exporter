@@ -3,11 +3,12 @@ package exporter.haproxy
 import exporter.Exporter
 import exporter.MetricType
 import exporter.MetricWriter
+import exporter.readHeaders
 import io.ktor.config.ApplicationConfig
 import io.ktor.network.sockets.aSocket
 import io.ktor.network.sockets.openReadChannel
 import io.ktor.network.sockets.openWriteChannel
-import kotlinx.coroutines.experimental.io.*
+import kotlinx.coroutines.experimental.io.readUTF8Line
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.URL
@@ -70,22 +71,6 @@ class HAProxyExporter(baseConfig: ApplicationConfig, endpointConfigs: List<Appli
 
         writer.metricValueIfNonNull("hap_hrsp_other", record["hrsp_other"],
                 MetricType.Counter, "other responses", *fields)
-    }
-
-    private suspend fun readHeaders(readChannel: ByteReadChannel) {
-        val delimiter = ByteBuffer.wrap("\r\n".toByteArray())
-        val buffer = ByteArray(1024 * 4)
-        while (true) {
-            val read = readChannel.readUntilDelimiter(delimiter, ByteBuffer.wrap(buffer))
-            if (read < buffer.size) {
-                readChannel.skipDelimiter(delimiter)
-                if (read == 0) {
-                    break
-                }
-            } else {
-                throw IllegalStateException()
-            }
-        }
     }
 
     override suspend fun export(writer: MetricWriter) {

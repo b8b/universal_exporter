@@ -65,15 +65,11 @@ The file universal_exporter.conf.sample is maintained as
 
 ### Implement additional exporters
 
-* memcached
+* memcached, redis
 * nginx (low - support sflow via ganglia)
 
 ### Implement additional output formats
 
-* ganglia xml
+* ganglia xml (low)
 * nagios (low)
 * csv (low)
-
-### Aggregated metrics endpoint
-
-* export all metrics via /metrics
