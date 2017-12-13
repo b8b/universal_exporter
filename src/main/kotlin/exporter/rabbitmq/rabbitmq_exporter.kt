@@ -10,10 +10,12 @@ import io.ktor.config.ApplicationConfig
 import io.ktor.network.sockets.aSocket
 import io.ktor.network.sockets.openReadChannel
 import io.ktor.network.sockets.openWriteChannel
+import kotlinx.coroutines.experimental.withTimeout
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.URL
 import java.util.*
+import java.util.concurrent.TimeUnit
 
 private class Config(baseConfig: ApplicationConfig, endpointConfig: ApplicationConfig) {
     val url = URL((endpointConfig.propertyOrNull("url") ?: baseConfig.property("url")).getString())
@@ -109,45 +111,47 @@ class RabbitMQExporter(baseConfig: ApplicationConfig, endpointConfigs: List<Appl
             throw ex ?: RuntimeException()
         }
         try {
-            val readChannel = socket.openReadChannel()
+            withTimeout(10, TimeUnit.SECONDS) {
+                val readChannel = socket.openReadChannel()
 
-            //read http headers
-            readHeaders(readChannel)
+                //read http headers
+                readHeaders(readChannel)
 
-            val buffer = ByteArray(1024 * 4)
-            val objBuffer = JsonObjectBuffer()
+                val buffer = ByteArray(1024 * 4)
+                val objBuffer = JsonObjectBuffer()
 
-            val p = JsonFactory().createNonBlockingByteArrayParser()
-            parse@ while (true) {
-                val token = p.nextToken()
-                when (token) {
-                    null -> {
-                        //EOF
-                        break@parse
-                    }
-                    JsonToken.NOT_AVAILABLE -> {
-                        with(p.nonBlockingInputFeeder as ByteArrayFeeder) {
-                            val read = readChannel.readAvailable(buffer)
-                            if (read < 0) {
-                                endOfInput()
-                            } else {
-                                feedInput(buffer, 0, read)
+                val p = JsonFactory().createNonBlockingByteArrayParser()
+                parse@ while (true) {
+                    val token = p.nextToken()
+                    when (token) {
+                        null -> {
+                            //EOF
+                            break@parse
+                        }
+                        JsonToken.NOT_AVAILABLE -> {
+                            with(p.nonBlockingInputFeeder as ByteArrayFeeder) {
+                                val read = readChannel.readAvailable(buffer)
+                                if (read < 0) {
+                                    endOfInput()
+                                } else {
+                                    feedInput(buffer, 0, read)
+                                }
                             }
                         }
-                    }
-                    else -> objBuffer.processEvent(p)?.let {
-                        when (endpoint) {
-                            "exchanges" -> {
-                                val x = exchangeObjectReader.readValue<Exchange>(it.asParserOnFirstToken())
-                                writeExchangeMetrics(writer, x, "instance" to instance,
-                                        "vhost" to x.vhost,
-                                        "exchange" to x.name)
-                            }
-                            else -> {
-                                val q = queueObjectReader.readValue<Queue>(it.asParserOnFirstToken())
-                                writeQueueMetrics(writer, q, "instance" to instance,
-                                        "vhost" to q.vhost,
-                                        "queue" to q.name)
+                        else -> objBuffer.processEvent(p)?.let {
+                            when (endpoint) {
+                                "exchanges" -> {
+                                    val x = exchangeObjectReader.readValue<Exchange>(it.asParserOnFirstToken())
+                                    writeExchangeMetrics(writer, x, "instance" to instance,
+                                            "vhost" to x.vhost,
+                                            "exchange" to x.name)
+                                }
+                                else -> {
+                                    val q = queueObjectReader.readValue<Queue>(it.asParserOnFirstToken())
+                                    writeQueueMetrics(writer, q, "instance" to instance,
+                                            "vhost" to q.vhost,
+                                            "queue" to q.name)
+                                }
                             }
                         }
                     }

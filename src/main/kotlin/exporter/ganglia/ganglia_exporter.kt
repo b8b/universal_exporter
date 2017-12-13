@@ -9,8 +9,10 @@ import io.ktor.config.ApplicationConfig
 import io.ktor.network.sockets.aSocket
 import io.ktor.network.sockets.openReadChannel
 import kotlinx.coroutines.experimental.io.readUntilDelimiter
+import kotlinx.coroutines.experimental.withTimeout
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
+import java.util.concurrent.TimeUnit
 import javax.xml.stream.XMLStreamConstants
 import javax.xml.stream.XMLStreamReader
 
@@ -210,47 +212,48 @@ class GangliaExporter(baseConfig: ApplicationConfig, endpointConfigs: List<Appli
 
     suspend override fun export(writer: MetricWriter) {
         val metricInfo = MutableMetricInfo()
-
         val remoteAddress = InetSocketAddress(configList.first().host, configList.first().port)
         val socket = aSocket().tcp().connect(remoteAddress)
         try {
-            val xif = InputFactoryImpl()
-            xif.configureForLowMemUsage()
-            val reader = xif.createAsyncForByteArray()
-            reader.config.setXmlEncoding("US_ASCII")
-            reader.config.setXMLResolver { publicID, systemID, baseURI, namespace -> null }
+            withTimeout(10, TimeUnit.SECONDS) {
+                val xif = InputFactoryImpl()
+                xif.configureForLowMemUsage()
+                val reader = xif.createAsyncForByteArray()
+                reader.config.setXmlEncoding("US_ASCII")
+                reader.config.setXMLResolver { publicID, systemID, baseURI, namespace -> null }
 
-            val input = socket.openReadChannel()
-            val buffer = ByteArray(1024 * 4)
+                val input = socket.openReadChannel()
+                val buffer = ByteArray(1024 * 4)
 
-            //skip DTD
-            val delimiter = ByteBuffer.wrap("]>".toByteArray(Charsets.US_ASCII))
-            val dst = ByteBuffer.wrap(buffer)
-            if (input.readUntilDelimiter(delimiter, dst) < dst.limit()) {
-                //delimiter found -> skip
-                input.readByte()
-                input.readByte()
-            } else {
-                //feed to parser
-                reader.inputFeeder.feedInput(buffer, 0, dst.position())
-            }
-
-            while (true) {
-                val read = input.readAvailable(buffer)
-                if (read < 0) {
-                    reader.inputFeeder.endOfInput()
+                //skip DTD
+                val delimiter = ByteBuffer.wrap("]>".toByteArray(Charsets.US_ASCII))
+                val dst = ByteBuffer.wrap(buffer)
+                if (input.readUntilDelimiter(delimiter, dst) < dst.limit()) {
+                    //delimiter found -> skip
+                    input.readByte()
+                    input.readByte()
                 } else {
-                    reader.inputFeeder.feedInput(buffer, 0, read)
+                    //feed to parser
+                    reader.inputFeeder.feedInput(buffer, 0, dst.position())
                 }
-                while (reader.hasNext()) {
-                    val ev = reader.next()
-                    if (ev == AsyncXMLStreamReader.EVENT_INCOMPLETE) {
+
+                while (true) {
+                    val read = input.readAvailable(buffer)
+                    if (read < 0) {
+                        reader.inputFeeder.endOfInput()
+                    } else {
+                        reader.inputFeeder.feedInput(buffer, 0, read)
+                    }
+                    while (reader.hasNext()) {
+                        val ev = reader.next()
+                        if (ev == AsyncXMLStreamReader.EVENT_INCOMPLETE) {
+                            break
+                        }
+                        processEvent(reader, writer, metricInfo)
+                    }
+                    if (read < 0) {
                         break
                     }
-                    processEvent(reader, writer, metricInfo)
-                }
-                if (read < 0) {
-                    break
                 }
             }
         } finally {
