@@ -17,6 +17,8 @@ import io.ktor.routing.application
 import io.ktor.routing.get
 import io.ktor.server.cio.CIOApplicationEngine
 import io.ktor.server.engine.commandLineEnvironment
+import kotlinx.coroutines.experimental.time.withTimeout
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 private fun ApplicationConfig.configListOrNull(path: String) = try {
@@ -32,11 +34,15 @@ private fun Route.exporter(name: String, factory: (ApplicationConfig) -> Exporte
         }
         exporters.forEach { exporter ->
             get("/metrics/$name/${exporter.instance}") {
-                call.respond(PrometheusOutput(exporter))
+                withTimeout(Duration.ofSeconds(10)) {
+                    call.respond(PrometheusOutput(exporter))
+                }
             }
         }
         get("/metrics/$name") {
-            call.respond(PrometheusOutput(*exporters.toTypedArray()))
+            withTimeout(Duration.ofSeconds(10)) {
+                call.respond(PrometheusOutput(*exporters.toTypedArray()))
+            }
         }
     }
 }
