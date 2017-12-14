@@ -7,7 +7,7 @@ plugins {
     application
     idea
 
-    val kotlinVersion = "1.2.0"
+    val kotlinVersion = "1.2.10"
     kotlin("jvm") version kotlinVersion
     kotlin("kapt") version kotlinVersion
 }
@@ -21,7 +21,7 @@ repositories {
 }
 
 dependencies {
-    val log4jVersion = "2.8.2"
+    val logbackVersion = "1.2.3"
     val ktorVersion = "0.9.0"
 
     compile("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
@@ -46,12 +46,10 @@ dependencies {
         exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre7")
     }
 
-    compile("org.apache.logging.log4j:log4j-slf4j-impl:${log4jVersion}")
-    compile("org.apache.logging.log4j:log4j-core:${log4jVersion}")
+    compile("ch.qos.logback:logback-classic:${logbackVersion}")
 
     testCompile("junit:junit:4.12")
     testCompile("io.ktor:ktor-server-tests:${ktorVersion}") {
-        exclude("ch.qos.logback", "logback-classic")
         exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre8")
         exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre7")
     }
