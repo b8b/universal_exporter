@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import exporter.*
 import io.ktor.config.ApplicationConfig
+import io.ktor.network.sockets.Socket
 import io.ktor.network.sockets.aSocket
 import io.ktor.network.sockets.openReadChannel
 import io.ktor.network.sockets.openWriteChannel
@@ -92,26 +93,31 @@ class RabbitMQExporter(baseConfig: ApplicationConfig, endpointConfigs: List<Appl
         export(writer, "queues")
     }
 
-    private suspend fun export(writer: MetricWriter, endpoint: String) {
-        val (socket, ex) = configList.map { c ->
+    private suspend fun connect(): Pair<Config, Socket> {
+        for (c in configList) {
             try {
                 val port = if (c.url.port <= 0) 80 else c.url.port
-                val result = aSocket().tcp().connect(InetSocketAddress(c.url.host, port)) to null
-                val writeChannel = result.first.openWriteChannel(true)
-                writeChannel.writeFully(("GET ${c.url.path}/${endpoint} HTTP/1.1\r\n" +
-                        "Authorization: Basic ${c.encodedCredentials}\r\n" +
-                        "Connection: close\r\n" +
-                        "\r\n").toByteArray())
-                result
+                val socket = aSocket().tcp().connect(InetSocketAddress(c.url.host, port))
+                return Pair(c, socket)
             } catch (ex: IOException) {
-                null to ex
+                if (c === configList.last()) {
+                    throw ex
+                }
             }
-        }.last()
-        if (socket == null) {
-            throw ex ?: RuntimeException()
         }
+        throw IllegalStateException()
+    }
+
+    private suspend fun export(writer: MetricWriter, endpoint: String) {
+        val (config, socket) = connect();
         try {
             withTimeout(10, TimeUnit.SECONDS) {
+                val writeChannel = socket.openWriteChannel(true)
+                writeChannel.writeFully(("GET ${config.url.path}/${endpoint} HTTP/1.1\r\n" +
+                        "Authorization: Basic ${config.encodedCredentials}\r\n" +
+                        "Connection: close\r\n" +
+                        "\r\n").toByteArray())
+
                 val readChannel = socket.openReadChannel()
 
                 //read http headers

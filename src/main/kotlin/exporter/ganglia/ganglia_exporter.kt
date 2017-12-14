@@ -6,10 +6,12 @@ import exporter.Exporter
 import exporter.MetricType
 import exporter.MetricWriter
 import io.ktor.config.ApplicationConfig
+import io.ktor.network.sockets.Socket
 import io.ktor.network.sockets.aSocket
 import io.ktor.network.sockets.openReadChannel
 import kotlinx.coroutines.experimental.io.readUntilDelimiter
 import kotlinx.coroutines.experimental.withTimeout
+import java.io.IOException
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.util.concurrent.TimeUnit
@@ -51,7 +53,7 @@ class GangliaExporter(baseConfig: ApplicationConfig, endpointConfigs: List<Appli
 
     private suspend fun metricValue(writer: MetricWriter, metricInfo: MutableMetricInfo) {
         val metric = (metricInfo.name ?: return) to (metricInfo.value ?: return)
-        val fields = mutableListOf<Pair<String, String>>()
+        val fields = mutableListOf<Pair<String, String>>("instance" to instance)
         val name: String = when (metricInfo.group) {
             // sflow httpd metrics
             "httpd" -> {
@@ -210,10 +212,23 @@ class GangliaExporter(baseConfig: ApplicationConfig, endpointConfigs: List<Appli
         }
     }
 
+    private suspend fun connect(): Pair<Config, Socket> {
+        for (c in configList) {
+            try {
+                val socket = aSocket().tcp().connect(InetSocketAddress(c.host, c.port))
+                return Pair(c, socket)
+            } catch (ex: IOException) {
+                if (c === configList.last()) {
+                    throw ex
+                }
+            }
+        }
+        throw IllegalStateException()
+    }
+
     suspend override fun export(writer: MetricWriter) {
         val metricInfo = MutableMetricInfo()
-        val remoteAddress = InetSocketAddress(configList.first().host, configList.first().port)
-        val socket = aSocket().tcp().connect(remoteAddress)
+        val (_, socket) = connect()
         try {
             withTimeout(10, TimeUnit.SECONDS) {
                 val xif = InputFactoryImpl()

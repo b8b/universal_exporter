@@ -5,6 +5,7 @@ import exporter.MetricType
 import exporter.MetricWriter
 import exporter.readHeaders
 import io.ktor.config.ApplicationConfig
+import io.ktor.network.sockets.Socket
 import io.ktor.network.sockets.aSocket
 import io.ktor.network.sockets.openReadChannel
 import io.ktor.network.sockets.openWriteChannel
@@ -75,18 +76,23 @@ class HAProxyExporter(baseConfig: ApplicationConfig, endpointConfigs: List<Appli
                 MetricType.Counter, "other responses", *fields)
     }
 
-    override suspend fun export(writer: MetricWriter) {
-        val (socket, ex) = configList.map { c ->
+    private suspend fun connect(): Pair<Config, Socket> {
+        for (c in configList) {
             try {
                 val port = if (c.url.port <= 0) 80 else c.url.port
-                aSocket().tcp().connect(InetSocketAddress(c.url.host, port)) to null
+                val socket = aSocket().tcp().connect(InetSocketAddress(c.url.host, port))
+                return Pair(c, socket)
             } catch (ex: IOException) {
-                null to ex
+                if (c === configList.last()) {
+                    throw ex
+                }
             }
-        }.last()
-        if (socket == null) {
-            throw ex ?: RuntimeException()
         }
+        throw IllegalStateException()
+    }
+
+    override suspend fun export(writer: MetricWriter) {
+        val (config, socket) = connect()
         try {
             withTimeout(10, TimeUnit.SECONDS) {
                 val writeChannel = socket.openWriteChannel(true)
