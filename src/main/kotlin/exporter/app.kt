@@ -15,7 +15,7 @@ import io.ktor.routing.Route
 import io.ktor.routing.Routing
 import io.ktor.routing.application
 import io.ktor.routing.get
-import io.ktor.server.cio.CIOApplicationEngine
+import io.ktor.server.netty.NettyApplicationEngine
 import io.ktor.server.engine.commandLineEnvironment
 import java.util.concurrent.TimeUnit
 
@@ -67,15 +67,10 @@ fun Application.module() {
 
 fun main(args: Array<String>) {
     val applicationEnvironment = commandLineEnvironment(args)
-    val engine = CIOApplicationEngine(applicationEnvironment) {
+    val engine = NettyApplicationEngine(applicationEnvironment) {
         callGroupSize = 1
         workerGroupSize = 1
         connectionGroupSize = 1
     }
-    Runtime.getRuntime().addShutdownHook(object : Thread() {
-        override fun run() {
-            engine.stop(3, 5, TimeUnit.SECONDS)
-        }
-    })
-    engine.start(true)
+    engine.start(false)
 }

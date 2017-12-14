@@ -29,7 +29,11 @@ dependencies {
 
     compile("com.fasterxml:aalto-xml:1.0.0")
 
-    compile("io.ktor:ktor-server-cio:${ktorVersion}") {
+    compile("io.ktor:ktor-server-netty:${ktorVersion}") {
+        exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre8")
+        exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre7")
+    }
+    compile("io.ktor:ktor-network:${ktorVersion}") {
         exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre8")
         exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre7")
     }
