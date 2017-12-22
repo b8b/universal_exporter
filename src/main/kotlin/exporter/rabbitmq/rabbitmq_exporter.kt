@@ -5,26 +5,21 @@ import com.fasterxml.jackson.core.JsonToken
 import com.fasterxml.jackson.core.async.ByteArrayFeeder
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.typesafe.config.Config
 import exporter.*
-import io.ktor.config.ApplicationConfig
-import io.ktor.network.sockets.Socket
-import io.ktor.network.sockets.aSocket
-import io.ktor.network.sockets.openReadChannel
-import io.ktor.network.sockets.openWriteChannel
+import io.vertx.core.Vertx
+import io.vertx.core.buffer.Buffer
+import io.vertx.core.net.NetSocket
+import io.vertx.core.streams.ReadStream
+import io.vertx.core.streams.WriteStream
+import io.vertx.kotlin.core.net.NetClientOptions
+import io.vertx.kotlin.coroutines.awaitResult
+import io.vertx.kotlin.coroutines.toChannel
 import kotlinx.coroutines.experimental.withTimeout
 import java.io.IOException
-import java.net.InetSocketAddress
 import java.net.URL
 import java.util.*
 import java.util.concurrent.TimeUnit
-
-private class Config(baseConfig: ApplicationConfig, endpointConfig: ApplicationConfig) {
-    val url = URL((endpointConfig.propertyOrNull("url") ?: baseConfig.property("url")).getString())
-    val username = (endpointConfig.propertyOrNull("username") ?: baseConfig.property("username")).getString()
-    val password = (endpointConfig.propertyOrNull("password") ?: baseConfig.property("password")).getString()
-    val encodedCredentials = Base64.getUrlEncoder().encodeToString(
-            "$username:$password".toByteArray())
-}
 
 private data class ExchangeMessageStats(val publish_in: Long, val publish_out: Long)
 
@@ -46,11 +41,25 @@ private data class Queue(
         val message_stats: QueueMessageStats?
 )
 
-class RabbitMQExporter(baseConfig: ApplicationConfig, endpointConfigs: List<ApplicationConfig>?) : Exporter {
+private class ExporterConfig(baseConfig: Config) {
+    val url = URL(baseConfig.getString("url"))
+    val username: String = baseConfig.getString("username")
+    val password: String = baseConfig.getString("password")
+    val encodedCredentials: String = Base64.getUrlEncoder().encodeToString(
+            "$username:$password".toByteArray())
+}
 
-    override val instance = baseConfig.property("instance").getString()
+class RabbitMQExporter(private val vertx: Vertx, baseConfig: Config) : Exporter {
 
-    private val configList = endpointConfigs?.map { Config(baseConfig, it) } ?: listOf(Config(baseConfig, baseConfig))
+    override val instance: String = baseConfig.getString("instance")
+
+    private val configList = if (baseConfig.hasPath("endpoints")) {
+        baseConfig.getConfigList("endpoints").map {
+            ExporterConfig(it.withFallback(baseConfig))
+        }
+    } else {
+        listOf(ExporterConfig(baseConfig))
+    }
 
     private val objectMapper = jacksonObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
@@ -93,11 +102,14 @@ class RabbitMQExporter(baseConfig: ApplicationConfig, endpointConfigs: List<Appl
         export(writer, "queues")
     }
 
-    private suspend fun connect(): Pair<Config, Socket> {
+    private suspend fun connect(): Pair<ExporterConfig, NetSocket> {
         for (c in configList) {
             try {
                 val port = if (c.url.port <= 0) 80 else c.url.port
-                val socket = aSocket().tcp().connect(InetSocketAddress(c.url.host, port))
+                val client = vertx.createNetClient(NetClientOptions(connectTimeout = 3000))
+                val socket = awaitResult<NetSocket> {
+                    client.connect(port, c.url.host, it)
+                }
                 return Pair(c, socket)
             } catch (ex: IOException) {
                 if (c === configList.last()) {
@@ -109,16 +121,16 @@ class RabbitMQExporter(baseConfig: ApplicationConfig, endpointConfigs: List<Appl
     }
 
     private suspend fun export(writer: MetricWriter, endpoint: String) {
-        val (config, socket) = connect();
+        val (config, socket) = connect()
         try {
-            withTimeout(10, TimeUnit.SECONDS) {
-                val writeChannel = socket.openWriteChannel(true)
-                writeChannel.writeFully(("GET ${config.url.path}/${endpoint} HTTP/1.1\r\n" +
+            withTimeout(3, TimeUnit.SECONDS) {
+                val sendChannel = (socket as WriteStream<Buffer>).toChannel(vertx)
+                sendChannel.send(Buffer.buffer("GET ${config.url.path}/$endpoint HTTP/1.1\r\n" +
                         "Authorization: Basic ${config.encodedCredentials}\r\n" +
                         "Connection: close\r\n" +
-                        "\r\n").toByteArray())
+                        "\r\n"))
 
-                val readChannel = socket.openReadChannel()
+                val readChannel = (socket as ReadStream<Buffer>).toByteChannel(vertx)
 
                 //read http headers
                 readHeaders(readChannel)

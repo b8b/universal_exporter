@@ -1,18 +1,10 @@
 package exporter
 
-import io.ktor.cio.WriteChannel
-import io.ktor.content.OutgoingContent
-import io.ktor.http.ContentType
-import io.ktor.http.contentType
-import io.ktor.http.withCharset
-import io.ktor.util.ValuesMap
-import kotlinx.coroutines.experimental.io.ByteBuffer
-import java.io.BufferedWriter
-import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.experimental.io.ByteWriteChannel
+import kotlinx.coroutines.experimental.io.writeStringUtf8
+import java.io.StringWriter
 
-val PROMETHEUS_CONTENT_TYPE = ContentType.Text.Plain
-        .withCharset(Charsets.UTF_8)
-        .withParameter("version", "0.0.4")
+val PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
 
 fun checkPrometheusMetricName(name: String): Boolean {
     if (name.isEmpty()) {
@@ -62,64 +54,59 @@ fun Number.toPrometheusString(): String {
     }
 }
 
-fun MetricValue.writeAsPrometheusText(writer: BufferedWriter, withHeader: Boolean = false) {
+fun MetricValue.writeAsPrometheusText(writer: Appendable, withHeader: Boolean = false) {
     if (withHeader) {
-        writer.write("# TYPE ")
-        writer.write(name)
-        writer.write(" ")
-        writer.write(type.toString().toLowerCase())
-        writer.newLine()
+        writer.append("# TYPE ")
+        writer.append(name)
+        writer.append(" ")
+        writer.append(type.toString().toLowerCase())
+        writer.appendln()
         if (description != null) {
-            writer.write("# HELP ")
-            writer.write(name)
-            writer.write(" ")
+            writer.append("# HELP ")
+            writer.append(name)
+            writer.append(" ")
             for (c in description) {
-                if (c == '\\') {
-                    writer.write("\\\\")
-                } else if (c == '\n') {
-                    writer.write("\\n")
-                } else {
-                    writer.write(c.toInt())
+                when (c) {
+                    '\\' -> writer.append("\\\\")
+                    '\n' -> writer.append("\\n")
+                    else -> writer.append(c)
                 }
             }
-            writer.newLine()
+            writer.appendln()
         }
     }
-    writer.write(name)
+    writer.append(name)
     if (fields.isNotEmpty()) {
-        writer.write("{")
+        writer.append("{")
         for (pair in fields) {
             if (!checkPrometheusLabelName(pair.first)) continue
-            writer.write(pair.first)
-            writer.write("=\"")
+            writer.append(pair.first)
+            writer.append("=\"")
             for (c in pair.second) {
-                if (c == '"') {
-                    writer.write("\\\"")
-                } else if (c == '\\') {
-                    writer.write("\\\\")
-                } else if (c == '\n') {
-                    writer.write("\\n")
-                } else {
-                    writer.write(c.toInt())
+                when (c) {
+                    '"' -> writer.append("\\\"")
+                    '\\' -> writer.append("\\\\")
+                    '\n' -> writer.append("\\n")
+                    else -> writer.append(c)
                 }
             }
-            writer.write("\"")
+            writer.append("\"")
             if (pair != fields.last()) {
-                writer.write(",")
+                writer.append(",")
             }
         }
-        writer.write("}")
+        writer.append("}")
     }
-    writer.write(" ")
-    writer.write(value.toPrometheusString())
+    writer.append(" ")
+    writer.append(value.toPrometheusString())
     if (ts != null) {
-        writer.write(" ")
-        writer.write(ts.toString())
+        writer.append(" ")
+        writer.append(ts.toString())
     }
-    writer.newLine()
+    writer.appendln()
 }
 
-private class PrometheusMetricWriter(private val channel: WriteChannel) : MetricWriter {
+class PrometheusMetricWriter(private val channel: ByteWriteChannel) : MetricWriter {
 
     private val metricSet = mutableSetOf<String>()
 
@@ -129,31 +116,11 @@ private class PrometheusMetricWriter(private val channel: WriteChannel) : Metric
             //skip metric
             return
         }
-        val data = ByteArrayOutputStream().use {
-            it.bufferedWriter().use {
-                v.writeAsPrometheusText(it, withHeader)
-            }
-            it.toByteArray()
+        StringWriter().let {
+            v.writeAsPrometheusText(it, withHeader)
+            channel.writeStringUtf8(it.toString())
         }
         if (withHeader) metricSet.add(v.name)
-        channel.write(ByteBuffer.wrap(data))
-    }
-
-}
-
-class PrometheusOutput(vararg val exporters: Exporter) : OutgoingContent.WriteChannelContent() {
-
-    override val headers: ValuesMap
-        get() = ValuesMap.build { contentType(PROMETHEUS_CONTENT_TYPE) }
-
-
-    suspend override fun writeTo(channel: WriteChannel) {
-        channel.use {
-            val metricWriter = PrometheusMetricWriter(it)
-            exporters.forEach { exporter ->
-                exporter.export(metricWriter)
-            }
-        }
     }
 
 }

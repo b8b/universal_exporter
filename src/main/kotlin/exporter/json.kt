@@ -4,7 +4,7 @@ import com.fasterxml.jackson.core.JsonParser
 import com.fasterxml.jackson.core.JsonToken
 import com.fasterxml.jackson.databind.util.TokenBuffer
 
-class JsonObjectBuffer() {
+class JsonObjectBuffer {
 
     private var buffer: TokenBuffer? = null
     private var objectDepth = -1

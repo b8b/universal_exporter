@@ -2,26 +2,25 @@ package exporter.ganglia
 
 import com.fasterxml.aalto.AsyncXMLStreamReader
 import com.fasterxml.aalto.stax.InputFactoryImpl
+import com.typesafe.config.Config
 import exporter.Exporter
 import exporter.MetricType
 import exporter.MetricWriter
-import io.ktor.config.ApplicationConfig
-import io.ktor.network.sockets.Socket
-import io.ktor.network.sockets.aSocket
-import io.ktor.network.sockets.openReadChannel
+import exporter.toByteChannel
+import io.vertx.core.Vertx
+import io.vertx.core.buffer.Buffer
+import io.vertx.core.net.NetSocket
+import io.vertx.core.streams.ReadStream
+import io.vertx.kotlin.core.net.NetClientOptions
+import io.vertx.kotlin.coroutines.awaitResult
 import kotlinx.coroutines.experimental.io.readUntilDelimiter
+import kotlinx.coroutines.experimental.io.skipDelimiter
 import kotlinx.coroutines.experimental.withTimeout
 import java.io.IOException
-import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.util.concurrent.TimeUnit
 import javax.xml.stream.XMLStreamConstants
 import javax.xml.stream.XMLStreamReader
-
-private class Config(baseConfig: ApplicationConfig, endpointConfig: ApplicationConfig) {
-    val host = (endpointConfig.propertyOrNull("host") ?: baseConfig.property("host")).getString()
-    val port = (endpointConfig.propertyOrNull("port") ?: baseConfig.property("port")).getString().toInt()
-}
 
 private enum class Type {
     String, Int8, Uint8, Int16, Uint16, Int32, Uint32, Float, Double, Timestamp
@@ -38,22 +37,33 @@ private data class MutableMetricInfo(var gridName: String? = null,
 
 private fun String.splitToPair(string: String): Pair<String, String>? {
     val i = lastIndexOf(string)
-    if (i < 0) {
-        return null
+    return if (i < 0) {
+        null
     } else {
-        return substring(0, i) to substring(i + 1, length)
+        substring(0, i) to substring(i + 1, length)
     }
 }
 
-class GangliaExporter(baseConfig: ApplicationConfig, endpointConfigs: List<ApplicationConfig>?) : Exporter {
+private class ExporterConfig(baseConfig: Config) {
+    val host: String = baseConfig.getString("host")
+    val port: Int = baseConfig.getInt("port")
+}
 
-    override val instance = baseConfig.property("instance").getString()
+class GangliaExporter(private val vertx: Vertx, baseConfig: Config) : Exporter {
 
-    private val configList = endpointConfigs?.map { Config(baseConfig, it) } ?: listOf(Config(baseConfig, baseConfig))
+    override val instance: String = baseConfig.getString("instance")
+
+    private val configList = if (baseConfig.hasPath("endpoints")) {
+        baseConfig.getConfigList("endpoints").map {
+            ExporterConfig(it.withFallback(baseConfig))
+        }
+    } else {
+        listOf(ExporterConfig(baseConfig))
+    }
 
     private suspend fun metricValue(writer: MetricWriter, metricInfo: MutableMetricInfo) {
         val metric = (metricInfo.name ?: return) to (metricInfo.value ?: return)
-        val fields = mutableListOf<Pair<String, String>>("instance" to instance)
+        val fields = mutableListOf("instance" to instance)
         val name: String = when (metricInfo.group) {
             // sflow httpd metrics
             "httpd" -> {
@@ -212,10 +222,13 @@ class GangliaExporter(baseConfig: ApplicationConfig, endpointConfigs: List<Appli
         }
     }
 
-    private suspend fun connect(): Pair<Config, Socket> {
+    private suspend fun connect(): Pair<ExporterConfig, NetSocket> {
         for (c in configList) {
             try {
-                val socket = aSocket().tcp().connect(InetSocketAddress(c.host, c.port))
+                val client = vertx.createNetClient(NetClientOptions(connectTimeout = 3000))
+                val socket = awaitResult<NetSocket> {
+                    client.connect(c.port, c.host, it)
+                }
                 return Pair(c, socket)
             } catch (ex: IOException) {
                 if (c === configList.last()) {
@@ -230,30 +243,30 @@ class GangliaExporter(baseConfig: ApplicationConfig, endpointConfigs: List<Appli
         val metricInfo = MutableMetricInfo()
         val (_, socket) = connect()
         try {
-            withTimeout(10, TimeUnit.SECONDS) {
+            withTimeout(3, TimeUnit.SECONDS) {
+                val readChannel = (socket as ReadStream<Buffer>).toByteChannel(vertx)
+
                 val xif = InputFactoryImpl()
                 xif.configureForLowMemUsage()
                 val reader = xif.createAsyncForByteArray()
                 reader.config.setXmlEncoding("US_ASCII")
-                reader.config.setXMLResolver { publicID, systemID, baseURI, namespace -> null }
+                reader.config.setXMLResolver { _, _, _, _ -> null }
 
-                val input = socket.openReadChannel()
                 val buffer = ByteArray(1024 * 4)
 
                 //skip DTD
                 val delimiter = ByteBuffer.wrap("]>".toByteArray(Charsets.US_ASCII))
                 val dst = ByteBuffer.wrap(buffer)
-                if (input.readUntilDelimiter(delimiter, dst) < dst.limit()) {
+                if (readChannel.readUntilDelimiter(delimiter, dst) < dst.limit()) {
                     //delimiter found -> skip
-                    input.readByte()
-                    input.readByte()
+                    readChannel.skipDelimiter(delimiter)
                 } else {
                     //feed to parser
                     reader.inputFeeder.feedInput(buffer, 0, dst.position())
                 }
 
                 while (true) {
-                    val read = input.readAvailable(buffer)
+                    val read = readChannel.readAvailable(buffer)
                     if (read < 0) {
                         reader.inputFeeder.endOfInput()
                     } else {

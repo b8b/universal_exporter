@@ -1,18 +1,18 @@
 package exporter.haproxy
 
-import exporter.Exporter
-import exporter.MetricType
-import exporter.MetricWriter
-import exporter.readHeaders
-import io.ktor.config.ApplicationConfig
-import io.ktor.network.sockets.Socket
-import io.ktor.network.sockets.aSocket
-import io.ktor.network.sockets.openReadChannel
-import io.ktor.network.sockets.openWriteChannel
+import com.typesafe.config.Config
+import exporter.*
+import io.vertx.core.Vertx
+import io.vertx.core.buffer.Buffer
+import io.vertx.core.net.NetSocket
+import io.vertx.core.streams.ReadStream
+import io.vertx.core.streams.WriteStream
+import io.vertx.kotlin.core.net.NetClientOptions
+import io.vertx.kotlin.coroutines.awaitResult
+import io.vertx.kotlin.coroutines.toChannel
 import kotlinx.coroutines.experimental.io.readUTF8Line
 import kotlinx.coroutines.experimental.withTimeout
 import java.io.IOException
-import java.net.InetSocketAddress
 import java.net.URL
 import java.util.concurrent.TimeUnit
 
@@ -25,15 +25,21 @@ private suspend fun MetricWriter.metricValueIfNonNull(name: String, value: Strin
     }
 }
 
-private class Config(baseConfig: ApplicationConfig, endpointConfig: ApplicationConfig) {
-    val url = URL((endpointConfig.propertyOrNull("url") ?: baseConfig.property("url")).getString())
+private class ExporterConfig(baseConfig: Config) {
+    val url = URL(baseConfig.getString("url"))
 }
 
-class HAProxyExporter(baseConfig: ApplicationConfig, endpointConfigs: List<ApplicationConfig>?) : Exporter {
+class HAProxyExporter(private val vertx: Vertx, baseConfig: Config) : Exporter {
 
-    override val instance = baseConfig.property("instance").getString()
+    override val instance: String = baseConfig.getString("instance")
 
-    private val configList = endpointConfigs?.map { Config(baseConfig, it) } ?: listOf(Config(baseConfig, baseConfig))
+    private val configList = if (baseConfig.hasPath("endpoints")) {
+        baseConfig.getConfigList("endpoints").map {
+            ExporterConfig(it.withFallback(baseConfig))
+        }
+    } else {
+        listOf(ExporterConfig(baseConfig))
+    }
 
     private suspend fun writeMetrics(writer: MetricWriter, record: Map<String, String>,
                                      vararg fields: Pair<String, String>) {
@@ -76,11 +82,14 @@ class HAProxyExporter(baseConfig: ApplicationConfig, endpointConfigs: List<Appli
                 MetricType.Counter, "other responses", *fields)
     }
 
-    private suspend fun connect(): Pair<Config, Socket> {
+    private suspend fun connect(): Pair<ExporterConfig, NetSocket> {
         for (c in configList) {
             try {
                 val port = if (c.url.port <= 0) 80 else c.url.port
-                val socket = aSocket().tcp().connect(InetSocketAddress(c.url.host, port))
+                val client = vertx.createNetClient(NetClientOptions(connectTimeout = 3000))
+                val socket = awaitResult<NetSocket> {
+                    client.connect(port, c.url.host, it)
+                }
                 return Pair(c, socket)
             } catch (ex: IOException) {
                 if (c === configList.last()) {
@@ -92,14 +101,17 @@ class HAProxyExporter(baseConfig: ApplicationConfig, endpointConfigs: List<Appli
     }
 
     override suspend fun export(writer: MetricWriter) {
-        val (config, socket) = connect()
+        val (_, socket) = connect()
         try {
-            withTimeout(10, TimeUnit.SECONDS) {
-                val writeChannel = socket.openWriteChannel(true)
-                writeChannel.writeFully("GET /;csv;norefresh HTTP/1.0\r\n\r\n".toByteArray())
-                val readChannel = socket.openReadChannel()
+            withTimeout(3, TimeUnit.SECONDS) {
+                val sendChannel = (socket as WriteStream<Buffer>).toChannel(vertx)
+                sendChannel.send(Buffer.buffer("GET /;csv;norefresh HTTP/1.0\r\n\r\n"))
+
+                val readChannel = (socket as ReadStream<Buffer>).toByteChannel(vertx)
+
                 //read http headers
                 readHeaders(readChannel)
+
                 //read csv headers
                 val firstLine = readChannel.readUTF8Line() ?: throw IllegalStateException()
                 val headers = firstLine.trimStart('#')
