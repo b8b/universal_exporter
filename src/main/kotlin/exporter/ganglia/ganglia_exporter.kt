@@ -61,6 +61,8 @@ class GangliaExporter(private val vertx: Vertx, baseConfig: Config) : Exporter {
         listOf(ExporterConfig(baseConfig))
     }
 
+    private val client = vertx.createNetClient(NetClientOptions(connectTimeout = 3000))
+
     private suspend fun metricValue(writer: MetricWriter, metricInfo: MutableMetricInfo) {
         val metric = (metricInfo.name ?: return) to (metricInfo.value ?: return)
         val fields = mutableListOf("instance" to instance)
@@ -225,7 +227,6 @@ class GangliaExporter(private val vertx: Vertx, baseConfig: Config) : Exporter {
     private suspend fun connect(): Pair<ExporterConfig, NetSocket> {
         for (c in configList) {
             try {
-                val client = vertx.createNetClient(NetClientOptions(connectTimeout = 3000))
                 val socket = awaitResult<NetSocket> {
                     client.connect(c.port, c.host, it)
                 }

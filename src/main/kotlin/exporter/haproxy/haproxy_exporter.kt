@@ -41,6 +41,8 @@ class HAProxyExporter(private val vertx: Vertx, baseConfig: Config) : Exporter {
         listOf(ExporterConfig(baseConfig))
     }
 
+    private val client = vertx.createNetClient(NetClientOptions(connectTimeout = 3000))
+
     private suspend fun writeMetrics(writer: MetricWriter, record: Map<String, String>,
                                      vararg fields: Pair<String, String>) {
         writer.metricValueIfNonNull("hap_qtime", record["qtime"],
@@ -86,7 +88,6 @@ class HAProxyExporter(private val vertx: Vertx, baseConfig: Config) : Exporter {
         for (c in configList) {
             try {
                 val port = if (c.url.port <= 0) 80 else c.url.port
-                val client = vertx.createNetClient(NetClientOptions(connectTimeout = 3000))
                 val socket = awaitResult<NetSocket> {
                     client.connect(port, c.url.host, it)
                 }

@@ -5,6 +5,7 @@ import com.typesafe.config.ConfigFactory
 import exporter.ganglia.GangliaExporter
 import exporter.haproxy.HAProxyExporter
 import exporter.rabbitmq.RabbitMQExporter
+import io.netty.buffer.Unpooled
 import io.vertx.core.Vertx
 import io.vertx.core.VertxOptions
 import io.vertx.core.buffer.Buffer
@@ -107,7 +108,7 @@ private class VertxByteWriteChannel private constructor(
                     writeStream.end()
                     return@launch
                 }
-                writeStream.write(Buffer.buffer(buffer).slice(0, read))
+                writeStream.write(Buffer.buffer(Unpooled.wrappedBuffer(buffer, 0, read)))
             }
             writeStream.drainHandler {
                 pump()

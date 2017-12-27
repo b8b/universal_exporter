@@ -61,6 +61,8 @@ class RabbitMQExporter(private val vertx: Vertx, baseConfig: Config) : Exporter 
         listOf(ExporterConfig(baseConfig))
     }
 
+    private val client = vertx.createNetClient(NetClientOptions(connectTimeout = 3000))
+
     private val objectMapper = jacksonObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
     private val exchangeObjectReader = objectMapper.readerFor(Exchange::class.java)
@@ -106,7 +108,6 @@ class RabbitMQExporter(private val vertx: Vertx, baseConfig: Config) : Exporter 
         for (c in configList) {
             try {
                 val port = if (c.url.port <= 0) 80 else c.url.port
-                val client = vertx.createNetClient(NetClientOptions(connectTimeout = 3000))
                 val socket = awaitResult<NetSocket> {
                     client.connect(port, c.url.host, it)
                 }
