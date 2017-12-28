@@ -25,21 +25,20 @@ private suspend fun MetricWriter.metricValueIfNonNull(name: String, value: Strin
     }
 }
 
-private class ExporterConfig(baseConfig: Config) {
-    val url = URL(baseConfig.getString("url"))
+data class HAProxyConfig(val instance: String, val endpoints: List<URL>) {
+    constructor(config: Config) : this(
+            config.getString("instance"),
+            if (config.hasPath("endpoints")) {
+                config.getConfigList("endpoints").map { it.withFallback(config) }
+            } else {
+                listOf(config)
+            }.map { URL(it.getString("url")) }
+    )
 }
 
-class HAProxyExporter(private val vertx: Vertx, baseConfig: Config) : Exporter {
+class HAProxyCollector(private val vertx: Vertx, val config: HAProxyConfig) : Collector {
 
-    override val instance: String = baseConfig.getString("instance")
-
-    private val configList = if (baseConfig.hasPath("endpoints")) {
-        baseConfig.getConfigList("endpoints").map {
-            ExporterConfig(it.withFallback(baseConfig))
-        }
-    } else {
-        listOf(ExporterConfig(baseConfig))
-    }
+    override val instance: String get() = config.instance
 
     private val client = vertx.createNetClient(NetClientOptions(connectTimeout = 3000))
 
@@ -84,16 +83,16 @@ class HAProxyExporter(private val vertx: Vertx, baseConfig: Config) : Exporter {
                 MetricType.Counter, "other responses", *fields)
     }
 
-    private suspend fun connect(): Pair<ExporterConfig, NetSocket> {
-        for (c in configList) {
+    private suspend fun connect(): Pair<URL, NetSocket> {
+        for (url in config.endpoints) {
             try {
-                val port = if (c.url.port <= 0) 80 else c.url.port
+                val port = if (url.port <= 0) 80 else url.port
                 val socket = awaitResult<NetSocket> {
-                    client.connect(port, c.url.host, it)
+                    client.connect(port, url.host, it)
                 }
-                return Pair(c, socket)
+                return Pair(url, socket)
             } catch (ex: IOException) {
-                if (c === configList.last()) {
+                if (url === config.endpoints.last()) {
                     throw ex
                 }
             }

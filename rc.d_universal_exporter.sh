@@ -42,7 +42,7 @@ command_args="-f -p ${pidfile} ${universal_exporter_daemonargs} \
   -cp @PREFIX@/share/universal_exporter/universal_exporter-@VERSION@.jar \
   ${universal_exporter_javaargs} \
   exporter.VerticleKt ${universal_exporter_args} \
-  >> /var/log/universal_exporter/main.out 2>&1"
+  > /var/log/universal_exporter/main.out 2>&1"
 
 load_rc_config $name
 run_rc_command "$1"

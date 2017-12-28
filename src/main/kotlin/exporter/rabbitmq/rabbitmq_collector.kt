@@ -41,25 +41,27 @@ private data class Queue(
         val message_stats: QueueMessageStats?
 )
 
-private class ExporterConfig(baseConfig: Config) {
-    val url = URL(baseConfig.getString("url"))
-    val username: String = baseConfig.getString("username")
-    val password: String = baseConfig.getString("password")
-    val encodedCredentials: String = Base64.getUrlEncoder().encodeToString(
-            "$username:$password".toByteArray())
+data class RabbitMQConfig(val instance: String, val endpoints: List<RabbitMQEndpoint>) {
+    constructor(config: Config) : this(
+            config.getString("instance"),
+            if (config.hasPath("endpoints")) {
+                config.getConfigList("endpoints").map { it.withFallback(config) }
+            } else {
+                listOf(config)
+            }.map(::RabbitMQEndpoint)
+    )
 }
 
-class RabbitMQExporter(private val vertx: Vertx, baseConfig: Config) : Exporter {
+data class RabbitMQEndpoint(val url: URL, val encodedCredentials: String) {
+    constructor(config: Config) : this(
+            URL(config.getString("url")),
+            Base64.getUrlEncoder().encodeToString("${config.getString("username")}:${config.getString("password")}".toByteArray())
+    )
+}
 
-    override val instance: String = baseConfig.getString("instance")
+class RabbitMQCollector(private val vertx: Vertx, val config: RabbitMQConfig) : Collector {
 
-    private val configList = if (baseConfig.hasPath("endpoints")) {
-        baseConfig.getConfigList("endpoints").map {
-            ExporterConfig(it.withFallback(baseConfig))
-        }
-    } else {
-        listOf(ExporterConfig(baseConfig))
-    }
+    override val instance: String get() = config.instance
 
     private val client = vertx.createNetClient(NetClientOptions(connectTimeout = 3000))
 
@@ -104,16 +106,16 @@ class RabbitMQExporter(private val vertx: Vertx, baseConfig: Config) : Exporter 
         export(writer, "queues")
     }
 
-    private suspend fun connect(): Pair<ExporterConfig, NetSocket> {
-        for (c in configList) {
+    private suspend fun connect(): Pair<RabbitMQEndpoint, NetSocket> {
+        for (endpointConfig in config.endpoints) {
             try {
-                val port = if (c.url.port <= 0) 80 else c.url.port
+                val port = if (endpointConfig.url.port <= 0) 80 else endpointConfig.url.port
                 val socket = awaitResult<NetSocket> {
-                    client.connect(port, c.url.host, it)
+                    client.connect(port, endpointConfig.url.host, it)
                 }
-                return Pair(c, socket)
+                return Pair(endpointConfig, socket)
             } catch (ex: IOException) {
-                if (c === configList.last()) {
+                if (endpointConfig === config.endpoints.last()) {
                     throw ex
                 }
             }

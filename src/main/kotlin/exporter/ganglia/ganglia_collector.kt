@@ -3,7 +3,7 @@ package exporter.ganglia
 import com.fasterxml.aalto.AsyncXMLStreamReader
 import com.fasterxml.aalto.stax.InputFactoryImpl
 import com.typesafe.config.Config
-import exporter.Exporter
+import exporter.Collector
 import exporter.MetricType
 import exporter.MetricWriter
 import exporter.toByteChannel
@@ -44,22 +44,27 @@ private fun String.splitToPair(string: String): Pair<String, String>? {
     }
 }
 
-private class ExporterConfig(baseConfig: Config) {
-    val host: String = baseConfig.getString("host")
-    val port: Int = baseConfig.getInt("port")
+data class GangliaConfig(val instance: String, val endpoints: List<GangliaEndpoint>) {
+    constructor(config: Config) : this(
+            config.getString("instance"),
+            if (config.hasPath("endpoints")) {
+                config.getConfigList("endpoints").map { it.withFallback(config) }
+            } else {
+                listOf(config)
+            }.map(::GangliaEndpoint)
+    )
 }
 
-class GangliaExporter(private val vertx: Vertx, baseConfig: Config) : Exporter {
+data class GangliaEndpoint(val host: String, val port: Int) {
+    constructor(config: Config) : this(
+            config.getString("host"),
+            config.getInt("port")
+    )
+}
 
-    override val instance: String = baseConfig.getString("instance")
+class GangliaCollector(private val vertx: Vertx, private val config: GangliaConfig) : Collector {
 
-    private val configList = if (baseConfig.hasPath("endpoints")) {
-        baseConfig.getConfigList("endpoints").map {
-            ExporterConfig(it.withFallback(baseConfig))
-        }
-    } else {
-        listOf(ExporterConfig(baseConfig))
-    }
+    override val instance: String get() = config.instance
 
     private val client = vertx.createNetClient(NetClientOptions(connectTimeout = 3000))
 
@@ -224,15 +229,15 @@ class GangliaExporter(private val vertx: Vertx, baseConfig: Config) : Exporter {
         }
     }
 
-    private suspend fun connect(): Pair<ExporterConfig, NetSocket> {
-        for (c in configList) {
+    private suspend fun connect(): Pair<GangliaEndpoint, NetSocket> {
+        for (c in config.endpoints) {
             try {
                 val socket = awaitResult<NetSocket> {
                     client.connect(c.port, c.host, it)
                 }
                 return Pair(c, socket)
             } catch (ex: IOException) {
-                if (c === configList.last()) {
+                if (c === config.endpoints.last()) {
                     throw ex
                 }
             }

@@ -33,7 +33,7 @@ interface MetricWriter {
 
 }
 
-interface Exporter {
+interface Collector {
     val instance: String
     suspend fun export(writer: MetricWriter)
 }

@@ -2,9 +2,12 @@ package exporter
 
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
-import exporter.ganglia.GangliaExporter
-import exporter.haproxy.HAProxyExporter
-import exporter.rabbitmq.RabbitMQExporter
+import exporter.ganglia.GangliaCollector
+import exporter.ganglia.GangliaConfig
+import exporter.haproxy.HAProxyCollector
+import exporter.haproxy.HAProxyConfig
+import exporter.rabbitmq.RabbitMQCollector
+import exporter.rabbitmq.RabbitMQConfig
 import io.netty.buffer.Unpooled
 import io.vertx.core.Vertx
 import io.vertx.core.VertxOptions
@@ -129,25 +132,23 @@ private class VertxByteWriteChannel private constructor(
 
 class Verticle(private val fileConfig: Config) : CoroutineVerticle() {
 
-    private val log = LoggerFactory.getLogger(javaClass)
-
     suspend override fun start() {
         val router = Router.router(vertx)
         val endpoints = mutableSetOf<String>()
 
-        exporter(router, "haproxy") { name, instanceCfg ->
+        collector(router, "haproxy") { name, instanceCfg ->
             endpoints.add(name)
-            HAProxyExporter(vertx, instanceCfg)
+            HAProxyCollector(vertx, HAProxyConfig(instanceCfg))
         }
 
-        exporter(router, "rabbitmq") { name, instanceCfg ->
+        collector(router, "rabbitmq") { name, instanceCfg ->
             endpoints.add(name)
-            RabbitMQExporter(vertx, instanceCfg)
+            RabbitMQCollector(vertx, RabbitMQConfig(instanceCfg))
         }
 
-        exporter(router, "ganglia") { name, instanceCfg ->
+        collector(router, "ganglia") { name, instanceCfg ->
             endpoints.add(name)
-            GangliaExporter(vertx, instanceCfg)
+            GangliaCollector(vertx, GangliaConfig(instanceCfg))
         }
 
         router.get("/").coroutineHandler { ctx ->
@@ -172,10 +173,10 @@ class Verticle(private val fileConfig: Config) : CoroutineVerticle() {
         }
     }
 
-    fun exporter(router: Router, name: String, exporterSupplier: (name: String, instanceCfg: Config) -> Exporter) {
+    fun collector(router: Router, name: String, collectorSupplier: (name: String, instanceCfg: Config) -> Collector) {
         if (fileConfig.hasPath(name)) {
             val exporters = fileConfig.getConfigList(name).map { instanceConfig ->
-                exporterSupplier(name, instanceConfig)
+                collectorSupplier(name, instanceConfig)
             }
             router.get("/metrics/$name").coroutineHandler { ctx ->
                 ctx.response().putHeader("Content-Type", PROMETHEUS_CONTENT_TYPE)
