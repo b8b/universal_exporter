@@ -35,10 +35,14 @@ pidfile=/var/run/universal_exporter.pid
 command="/usr/sbin/daemon"
 procname="${universal_exporter_javavm}"
 command_args="-f -p ${pidfile} ${universal_exporter_daemonargs} \
-  ${procname} ${universal_exporter_javaargs} \
+  ${procname} \
+  -Dlogfile.path=/var/log/universal_exporter/main.log \
+  -Dlogfile.level=INFO \
   -Dvertx.cacheDirBase=/tmp/.vertx \
   -cp @PREFIX@/share/universal_exporter/universal_exporter-@VERSION@.jar \
-  exporter.VerticleKt ${universal_exporter_args}"
+  ${universal_exporter_javaargs} \
+  exporter.VerticleKt ${universal_exporter_args} \
+  >> /var/log/universal_exporter/main.out 2>&1"
 
 load_rc_config $name
 run_rc_command "$1"

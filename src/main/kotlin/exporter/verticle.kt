@@ -25,6 +25,7 @@ import kotlinx.coroutines.experimental.io.ByteReadChannel
 import kotlinx.coroutines.experimental.io.ByteWriteChannel
 import kotlinx.coroutines.experimental.launch
 import kotlinx.coroutines.experimental.withTimeout
+import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -70,13 +71,17 @@ private class VertxByteReadChannel private constructor(
         }
         readStream.handler { event ->
             val job = launch(vertx.dispatcher()) {
-                val byteBuf = event.byteBuf
-                if (byteBuf.hasArray()) {
-                    readChannel.writeFully(byteBuf.array(), byteBuf.arrayOffset(), byteBuf.writerIndex())
-                } else {
-                    readChannel.writeFully(event.bytes)
+                try {
+                    val byteBuf = event.byteBuf
+                    if (byteBuf.hasArray()) {
+                        readChannel.writeFully(byteBuf.array(), byteBuf.arrayOffset(), byteBuf.writerIndex())
+                    } else {
+                        readChannel.writeFully(event.bytes)
+                    }
+                    readChannel.flush()
+                } catch (ex: Throwable) {
+                    readChannel.close(ex)
                 }
-                readChannel.flush()
             }
             if (job.isActive) {
                 readStream.pause()
@@ -101,17 +106,21 @@ private class VertxByteWriteChannel private constructor(
 
     fun pump(): VertxByteWriteChannel {
         launch(vertx.dispatcher()) {
-            val buffer = ByteArray(1024 * 4)
-            while (!writeStream.writeQueueFull()) {
-                val read = writeChannel.readAvailable(buffer)
-                if (read < 0) {
-                    writeStream.end()
-                    return@launch
+            try {
+                val buffer = ByteArray(1024 * 4)
+                while (!writeStream.writeQueueFull()) {
+                    val read = writeChannel.readAvailable(buffer)
+                    if (read < 0) {
+                        writeStream.end()
+                        return@launch
+                    }
+                    writeStream.write(Buffer.buffer(Unpooled.wrappedBuffer(buffer, 0, read)))
                 }
-                writeStream.write(Buffer.buffer(Unpooled.wrappedBuffer(buffer, 0, read)))
-            }
-            writeStream.drainHandler {
-                pump()
+                writeStream.drainHandler {
+                    pump()
+                }
+            } catch (ex: Throwable) {
+                writeChannel.close(ex)
             }
         }
         return this
@@ -119,6 +128,8 @@ private class VertxByteWriteChannel private constructor(
 }
 
 class Verticle(private val fileConfig: Config) : CoroutineVerticle() {
+
+    private val log = LoggerFactory.getLogger(javaClass)
 
     suspend override fun start() {
         val router = Router.router(vertx)
@@ -144,8 +155,7 @@ class Verticle(private val fileConfig: Config) : CoroutineVerticle() {
         }
 
         awaitResult<HttpServer> {
-            HttpServerOptions(idleTimeout = 10)
-            vertx.createHttpServer()
+            vertx.createHttpServer(HttpServerOptions(idleTimeout = 10))
                 .requestHandler(router::accept)
                 .listen(config.getInteger("http.port", 8080), it)
         }
@@ -184,6 +194,13 @@ class Verticle(private val fileConfig: Config) : CoroutineVerticle() {
 }
 
 fun main(args : Array<String>) {
+    System.setProperty(
+            io.vertx.core.logging.LoggerFactory.LOGGER_DELEGATE_FACTORY_CLASS_NAME,
+            io.vertx.core.logging.SLF4JLogDelegateFactory::class.java.name)
+    LoggerFactory.getLogger(io.vertx.core.logging.LoggerFactory::class.java)
+
+    val log = LoggerFactory.getLogger("main")
+
     val argsMap = args.map { it.substringBefore('=') to it.substringAfter('=', "") }.toMap()
     val configFile = argsMap["-config"]?.let { File(it) }
     val fileConfig = configFile?.let { ConfigFactory.parseFile(it) } ?: ConfigFactory.load()
@@ -196,10 +213,10 @@ fun main(args : Array<String>) {
 
     vertx.deployVerticle(Verticle(fileConfig)) { ar ->
         if (ar.succeeded()) {
-            println("Application started")
+            log.info("Application started")
         } else {
-            println("Could not start application")
-            ar.cause().printStackTrace()
+            log.error("Could not start application", ar.cause())
+            System.exit(1)
         }
     }
 }

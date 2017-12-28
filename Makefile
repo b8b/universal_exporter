@@ -14,8 +14,10 @@ DISTSUB=--strip-components=2 ${APP}-${VERSION}/lib
 SYSCONFDIR=${PREFIX}/etc
 RC_D_DIR=${SYSCONFDIR}/rc.d
 SHAREDSTATEDIR=${PREFIX}/share/${APP}
+LOGDIR=/var/log/${APP}
 INSTALL_SYS=install -o root -g wheel
 INSTALL_CONF=install -o root -g ${GROUP}
+INSTALL_LOG=install -o ${USER} -g ${GROUP}
 
 all: ${BUILD}/rc.d/${APP}
 
@@ -29,3 +31,4 @@ install: ${APP}.conf ${BUILD}/rc.d/${APP} ${DISTTAR}
 	${INSTALL_SYS} -d -m 755 "${SHAREDSTATEDIR}"
 	tar xf ${DISTTAR} -C ${SHAREDSTATEDIR}/ ${DISTSUB}
 	${INSTALL_SYS} -m 444 ${LIBS}/${APP}-${VERSION}.jar ${SHAREDSTATEDIR}/
+	${INSTALL_LOG} -d -m 755 ${LOGDIR}/

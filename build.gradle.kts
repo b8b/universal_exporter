@@ -53,6 +53,7 @@ dependencies {
     compile("ch.qos.logback:logback-classic:$logbackVersion")
 
     testCompile("junit:junit:4.12")
+    testCompile("io.vertx:vertx-unit:$vertxVersion")
 }
 
 application {
