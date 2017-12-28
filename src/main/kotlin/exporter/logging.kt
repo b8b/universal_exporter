@@ -9,6 +9,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.ConsoleAppender
 import ch.qos.logback.core.encoder.LayoutWrappingEncoder
 import ch.qos.logback.core.rolling.RollingFileAppender
+import ch.qos.logback.core.rolling.TimeBasedRollingPolicy
 import ch.qos.logback.core.spi.ContextAwareBase
 
 class LoggingConfig : ContextAwareBase(), Configurator {
@@ -37,6 +38,12 @@ class LoggingConfig : ContextAwareBase(), Configurator {
                 fa.name = "file"
                 fa.encoder = encoder
                 fa.file = logfilePath
+                val policy = TimeBasedRollingPolicy<ILoggingEvent>()
+                policy.context = lc
+                policy.fileNamePattern = "${logfilePath}-%d{yyyy-MM-dd}.log"
+                policy.setParent(fa)
+                policy.start()
+                fa.rollingPolicy = policy
                 fa.start()
                 rootLogger.addAppender(fa)
             } else {

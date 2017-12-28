@@ -34,7 +34,7 @@ load_rc_config $name
 pidfile=/var/run/universal_exporter.pid
 command="/usr/sbin/daemon"
 procname="${universal_exporter_javavm}"
-command_args="-f -p ${pidfile} ${universal_exporter_daemonargs} \
+command_args="-p ${pidfile} ${universal_exporter_daemonargs} \
   ${procname} \
   -Dlogfile.path=/var/log/universal_exporter/main.log \
   -Dlogfile.level=INFO \
