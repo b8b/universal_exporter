@@ -12,7 +12,6 @@ plugins {
     kotlin("jvm") version kotlinVersion
     kotlin("kapt") version kotlinVersion
 
-//    id("io.vertx.vertx-plugin") version "0.0.6"
 //    id("com.commercehub.gradle.plugin.avro") version "0.12.0"
 }
 
@@ -31,8 +30,8 @@ dependencies {
     compile("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     compile("org.jetbrains.kotlin:kotlin-reflect")
 
-    compile("org.jetbrains.kotlinx:kotlinx-coroutines-core:0.19.3")
-    compile("org.jetbrains.kotlinx:kotlinx-coroutines-io:0.19.3")
+    compile("org.jetbrains.kotlinx:kotlinx-coroutines-core:0.21")
+    compile("org.jetbrains.kotlinx:kotlinx-coroutines-io:0.21")
     compile("org.jetbrains.kotlinx:kotlinx-html-jvm:0.6.8")
 
     compile("com.typesafe:config:1.2.1")
@@ -61,7 +60,7 @@ application {
 }
 
 with(tasks["run"] as JavaExec) {
-    maxHeapSize = "10m"
+    maxHeapSize = "20m"
     args = listOf("-config=universal_exporter.conf")
 }
 
