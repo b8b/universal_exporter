@@ -6,6 +6,7 @@ import exporter.ganglia.GangliaCollector
 import exporter.ganglia.GangliaConfig
 import exporter.haproxy.HAProxyCollector
 import exporter.haproxy.HAProxyConfig
+import exporter.java.JavaCollector
 import exporter.rabbitmq.RabbitMQCollector
 import exporter.rabbitmq.RabbitMQConfig
 import io.netty.buffer.Unpooled
@@ -134,7 +135,20 @@ class Verticle(private val fileConfig: Config) : CoroutineVerticle() {
 
     suspend override fun start() {
         val router = Router.router(vertx)
-        val endpoints = mutableSetOf<String>()
+        val endpoints = mutableSetOf<String>("java")
+
+        val javaCollector = JavaCollector(vertx)
+        router.get("/metrics/java").coroutineHandler { ctx ->
+            ctx.response().putHeader("Content-Type", PROMETHEUS_CONTENT_TYPE)
+            ctx.response().isChunked = true
+            val ch = ctx.response().toByteChannel(vertx)
+            try {
+                val metricWriter = PrometheusMetricWriter(ch)
+                javaCollector.export(metricWriter)
+            } finally {
+                ch.close()
+            }
+        }
 
         collector(router, "haproxy") { name, instanceCfg ->
             endpoints.add(name)
@@ -158,7 +172,7 @@ class Verticle(private val fileConfig: Config) : CoroutineVerticle() {
         awaitResult<HttpServer> {
             vertx.createHttpServer(HttpServerOptions(idleTimeout = 10))
                 .requestHandler(router::accept)
-                .listen(config.getInteger("http.port", 8080), it)
+                .listen(fileConfig.getInt("http.port"), it)
         }
     }
 
@@ -205,6 +219,10 @@ fun main(args : Array<String>) {
     val argsMap = args.map { it.substringBefore('=') to it.substringAfter('=', "") }.toMap()
     val configFile = argsMap["-config"]?.let { File(it) }
     val fileConfig = configFile?.let { ConfigFactory.parseFile(it) } ?: ConfigFactory.load()
+    val defaultConfig = ConfigFactory.defaultReference()
+    val config = fileConfig.withFallback(defaultConfig)
+
+    configureLogging(config)
 
     val vertxOptions = VertxOptions()
             .setBlockedThreadCheckInterval(10000)
@@ -212,7 +230,7 @@ fun main(args : Array<String>) {
 
     val vertx = Vertx.vertx(vertxOptions)
 
-    vertx.deployVerticle(Verticle(fileConfig)) { ar ->
+    vertx.deployVerticle(Verticle(config)) { ar ->
         if (ar.succeeded()) {
             log.info("Application started")
         } else {

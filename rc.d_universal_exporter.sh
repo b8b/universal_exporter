@@ -36,8 +36,6 @@ command="/usr/sbin/daemon"
 procname="${universal_exporter_javavm}"
 command_args="-p ${pidfile} ${universal_exporter_daemonargs} \
   ${procname} \
-  -Dlogfile.path=/var/log/universal_exporter/main.log \
-  -Dlogfile.level=INFO \
   -Dvertx.cacheDirBase=/tmp/.vertx \
   -cp @PREFIX@/share/universal_exporter/universal_exporter-@VERSION@.jar \
   ${universal_exporter_javaargs} \

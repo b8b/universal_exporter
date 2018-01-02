@@ -1,4 +1,10 @@
 
+# set listening port
+#port = 8080
+
+# log to file
+#log.file = /var/log/universal_exporter/universal_exporter.log
+
 rabbitmq [
     {
         instance = "prod"

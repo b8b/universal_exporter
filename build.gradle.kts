@@ -11,11 +11,9 @@ plugins {
     val kotlinVersion = "1.2.10"
     kotlin("jvm") version kotlinVersion
     kotlin("kapt") version kotlinVersion
-
-//    id("com.commercehub.gradle.plugin.avro") version "0.12.0"
 }
 
-version = "1.0-SNAPSHOT"
+version = "0.1.0"
 
 repositories {
     jcenter()
@@ -38,6 +36,8 @@ dependencies {
 
     compile("com.fasterxml:aalto-xml:1.0.0")
     compile("com.fasterxml.jackson.module:jackson-module-kotlin:$jacksonVersion")
+
+    compile("io.prometheus:simpleclient_hotspot:0.1.0")
 
     compile("io.vertx:vertx-lang-kotlin:$vertxVersion") {
         exclude("org.jetbrains.kotlin", "kotlin-stdlib-jre8")
