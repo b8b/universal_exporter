@@ -17,6 +17,9 @@ Collection of metrics exporters for prometheus.
 
 ## Installing on FreeBSD
 
+    ./gradlew installDist
+    cd build/install/universal_exporter
+    
     make
     sudo make install
     

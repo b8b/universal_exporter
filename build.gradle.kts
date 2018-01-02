@@ -2,6 +2,7 @@ import org.gradle.kotlin.dsl.version
 import org.gradle.script.lang.kotlin.*
 import org.jetbrains.kotlin.gradle.dsl.Coroutines
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import org.jetbrains.kotlin.script.tryConstructClassFromStringArgs
 
 plugins {
     java
@@ -13,7 +14,7 @@ plugins {
     kotlin("kapt") version kotlinVersion
 }
 
-version = "0.1.0"
+version = project.properties["VERSION"]!!
 
 repositories {
     jcenter()
@@ -82,6 +83,13 @@ java {
     sourceSets["main"].java.srcDir(File("$buildDir/generated/source/kapt/main/"))
 }
 
+idea {
+    module {
+        // Tell idea to mark the folder as generated sources
+        generatedSourceDirs.add(File("$buildDir/generated/source/kapt/main/"))
+    }
+}
+
 tasks.withType<Jar> {
     manifest {
         attributes["Implementation-Title"] = project.name
@@ -96,9 +104,7 @@ createTask("copyDependencies", Copy::class) {
     from(configurations.compile)
 }
 
-idea {
-    module {
-        // Tell idea to mark the folder as generated sources
-        generatedSourceDirs.add(File("$buildDir/generated/source/kapt/main/"))
-    }
+distributions["main"].contents {
+    from("README.md", "gradle.properties")
+    from("src/main/dist")
 }
