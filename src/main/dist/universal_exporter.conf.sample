@@ -1,9 +1,17 @@
 
 # set listening port
-#port = 8080
+#http.port = 8080
 
 # log to file
 #log.file = /var/log/universal_exporter/universal_exporter.log
+
+syslog [
+    {
+        #currently, only tcp implemented
+        #proto = tcp
+        port = 8088
+    }
+]
 
 rabbitmq [
     {

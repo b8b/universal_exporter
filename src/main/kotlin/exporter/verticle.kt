@@ -9,6 +9,8 @@ import exporter.haproxy.HAProxyConfig
 import exporter.java.JavaCollector
 import exporter.rabbitmq.RabbitMQCollector
 import exporter.rabbitmq.RabbitMQConfig
+import exporter.syslog.SyslogCollector
+import exporter.syslog.SyslogConfig
 import io.netty.buffer.Unpooled
 import io.vertx.core.Vertx
 import io.vertx.core.VertxOptions
@@ -24,6 +26,8 @@ import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.awaitResult
 import io.vertx.kotlin.coroutines.dispatcher
 import kotlinx.coroutines.experimental.cancel
+import kotlinx.coroutines.experimental.channels.ArrayChannel
+import kotlinx.coroutines.experimental.channels.ReceiveChannel
 import kotlinx.coroutines.experimental.io.ByteChannel
 import kotlinx.coroutines.experimental.io.ByteReadChannel
 import kotlinx.coroutines.experimental.io.ByteWriteChannel
@@ -32,6 +36,7 @@ import kotlinx.coroutines.experimental.withTimeout
 import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.nio.ByteBuffer
 import java.util.concurrent.TimeUnit
 
 fun Route.coroutineHandler(timeout: Long? = 10000L, fn : suspend (RoutingContext) -> Unit) {
@@ -110,6 +115,39 @@ fun WriteStream<Buffer>.toByteChannel(vertx: Vertx): ByteWriteChannel {
     return VertxByteWriteChannel(vertx, this).pump()
 }
 
+fun ReadStream<Buffer>.toReceiveChannel(vertx: Vertx): ReceiveChannel<ByteBuffer> {
+    return VertxReceiveChannel(vertx, this)
+}
+
+private class VertxReceiveChannel(
+        private val vertx: Vertx,
+        private val readStream: ReadStream<Buffer>): ArrayChannel<ByteBuffer>(1) {
+
+    init {
+        readStream.endHandler { _ ->
+            close()
+        }
+        readStream.exceptionHandler { err ->
+            close(err)
+        }
+        readStream.handler { event ->
+            val job = launch(vertx.dispatcher()) {
+                try {
+                    send(event.byteBuf.nioBuffer())
+                } catch (ex: Throwable) {
+                    close(ex)
+                }
+            }
+            if (job.isActive) {
+                readStream.pause()
+                job.invokeOnCompletion {
+                    readStream.resume()
+                }
+            }
+        }
+    }
+}
+
 private class VertxByteWriteChannel private constructor(
         private val vertx: Vertx,
         private val writeStream: WriteStream<Buffer>,
@@ -174,6 +212,13 @@ class Verticle(private val fileConfig: Config) : CoroutineVerticle() {
             GangliaCollector(vertx, GangliaConfig(instanceCfg))
         }
 
+        collector(router, "syslog") { name, instanceCfg ->
+            endpoints.add(name)
+            SyslogCollector(vertx, SyslogConfig(instanceCfg))
+        }.forEach {
+            it.start()
+        }
+
         router.get("/").coroutineHandler { ctx ->
             index(ctx, endpoints.toList().sorted())
         }
@@ -196,7 +241,7 @@ class Verticle(private val fileConfig: Config) : CoroutineVerticle() {
         }
     }
 
-    fun collector(router: Router, name: String, collectorSupplier: (name: String, instanceCfg: Config) -> Collector) {
+    fun <C: Collector> collector(router: Router, name: String, collectorSupplier: (name: String, instanceCfg: Config) -> C): List<C> {
         if (fileConfig.hasPath(name)) {
             val exporters = fileConfig.getConfigList(name).map { instanceConfig ->
                 collectorSupplier(name, instanceConfig)
@@ -212,6 +257,9 @@ class Verticle(private val fileConfig: Config) : CoroutineVerticle() {
                     ch.close()
                 }
             }
+            return exporters
+        } else {
+            return emptyList()
         }
     }
 
