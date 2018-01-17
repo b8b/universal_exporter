@@ -9,7 +9,7 @@ plugins {
     application
     idea
 
-    val kotlinVersion = "1.2.10"
+    val kotlinVersion = "1.2.20"
     kotlin("jvm") version kotlinVersion
     kotlin("kapt") version kotlinVersion
 }

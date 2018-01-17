@@ -43,7 +43,7 @@ class SyslogCollector(private val vertx: Vertx, val config: SyslogConfig) : Coll
                 val parser = Progressive2(ch)
                 try {
                     while (parser.parse5424()) {
-                        parser.skipMesage()
+                        parser.skipMessage()
                         counter++
                     }
                 } catch (ex: Exception) {

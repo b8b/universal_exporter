@@ -31,8 +31,11 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>) {
     fun facility() = if (priValue < 0) null else Facility.values().getOrNull(priValue shr 3)
     fun severity() = if (priValue < 0) null else Severity.values().getOrNull(priValue and 0x7)
     fun ts() = ts
+    fun host() = cachedHost.second
+    fun app() = cachedApp.second
     fun proc() = proc
     fun msgid() = msgid
+    fun sd(id: String, key: String): String? = values[id to key]
 
     private suspend fun receive(): Boolean {
         current = channel.receiveOrNull() ?: return false
@@ -162,10 +165,9 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>) {
     suspend fun parse5424(): Boolean {
         //read pri
         priValue = 0
-        if (skipPrefix('<'.toByte())) {
-            if (!readDigits({ priValue = priValue * 10 + it })) return false
-            if (!skipPrefix('>'.toByte())) return false
-        }
+        if (!skipPrefix('<'.toByte())) return false
+        if (!readDigits({ priValue = priValue * 10 + it })) return false
+        if (!skipPrefix('>'.toByte())) return false
 
         //read version
         if (!skipPrefix('1'.toByte())) return false
@@ -273,7 +275,13 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>) {
         return true
     }
 
-    suspend fun skipMesage() {
+    suspend fun readMessage(): String? {
+        if (!readUntil({ it == '\n'.toByte() })) return null
+        skipByte()
+        return tmpChars().toString()
+    }
+
+    suspend fun skipMessage() {
         skip({ it != '\n'.toByte() })
         skipByte()
     }
