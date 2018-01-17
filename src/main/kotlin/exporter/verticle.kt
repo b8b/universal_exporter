@@ -77,12 +77,21 @@ private class VertxByteReadChannel private constructor(
             val job = launch(vertx.dispatcher()) {
                 try {
                     val byteBuf = event.byteBuf
-                    if (byteBuf.hasArray()) {
-                        readChannel.writeFully(byteBuf.array(), byteBuf.arrayOffset(), byteBuf.writerIndex())
-                    } else {
-                        readChannel.writeFully(event.bytes)
+                    while (byteBuf.isReadable) {
+                        readChannel.write(2) { dst ->
+                            val wantToWrite = byteBuf.writerIndex() - byteBuf.readerIndex()
+                            val origLimit = dst.limit()
+                            if (dst.remaining() > wantToWrite) {
+                                dst.limit(dst.position() + wantToWrite)
+                            } else if (dst.remaining() > 1) {
+                                //workaround flush bug
+                                dst.limit(origLimit - 1)
+                            }
+                            byteBuf.readBytes(dst)
+                            dst.limit(origLimit)
+                        }
+                        readChannel.flush()
                     }
-                    readChannel.flush()
                 } catch (ex: Throwable) {
                     readChannel.close(ex)
                 }
