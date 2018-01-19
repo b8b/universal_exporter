@@ -128,9 +128,11 @@ class RabbitMQCollector(private val vertx: Vertx, val config: RabbitMQConfig) : 
         try {
             withTimeout(3, TimeUnit.SECONDS) {
                 val sendChannel = (socket as WriteStream<Buffer>).toChannel(vertx)
-                sendChannel.send(Buffer.buffer("GET ${config.url.path}/$endpoint HTTP/1.1\r\n" +
+                sendChannel.send(Buffer.buffer("GET ${config.url.path}/$endpoint HTTP/1.0\r\n" +
+                        "Host: ${config.url.host}:${config.url.port}\r\n" +
+                        "User-Agent: Cowgirl/0.1\r\n" +
+                        "Accept: */*\r\n" +
                         "Authorization: Basic ${config.encodedCredentials}\r\n" +
-                        "Connection: close\r\n" +
                         "\r\n"))
 
                 val readChannel = (socket as ReadStream<Buffer>).toByteChannel(vertx)
