@@ -1,17 +1,19 @@
-package exporter.syslog
+package rfc5424
 
 import kotlinx.coroutines.experimental.channels.ReceiveChannel
 import java.nio.ByteBuffer
 import java.nio.charset.Charset
 import java.time.OffsetDateTime
 
-class Progressive2(val channel: ReceiveChannel<ByteBuffer>) {
+class Progressive2(val channel: ReceiveChannel<ByteBuffer>,
+                   val internalBuffer: ByteBuffer = ByteBuffer.allocateDirect(1024 * 1024 * 64)) {
 
-    private val _tmp = ByteBuffer.allocateDirect(1024 * 2)
-    private var tmp = _tmp
+    private var tmp = internalBuffer
 
     private var current = ByteBuffer.allocate(0)
     private var dup: ByteBuffer? = null
+    private var bytesConsumedTotal: Long = 0
+    private var firstStartIndex: Int = 0
     private var startIndex: Int = 0
     private var endIndex: Int = 0
 
@@ -23,6 +25,8 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>) {
     private val values = mutableMapOf<Pair<String, String>, String>()
 
     private var priValue = -1
+    private var host: String? = null
+    private var app: String? = null
     private var ts: OffsetDateTime? = null
     private var proc: Long? = null
     private var msgid: String? = null
@@ -31,17 +35,21 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>) {
     fun facility() = if (priValue < 0) null else Facility.values().getOrNull(priValue shr 3)
     fun severity() = if (priValue < 0) null else Severity.values().getOrNull(priValue and 0x7)
     fun ts() = ts
-    fun host() = cachedHost.second
-    fun app() = cachedApp.second
+    fun host() = host
+    fun app() = app
     fun proc() = proc
     fun msgid() = msgid
     fun sd(id: String, key: String): String? = values[id to key]
 
+    fun bytesConsumed() = bytesConsumedTotal + startIndex - firstStartIndex
+
     private suspend fun receive(): Boolean {
+        bytesConsumedTotal += endIndex - firstStartIndex
         current = channel.receiveOrNull() ?: return false
         dup = null
         startIndex = current.position()
         endIndex = current.remaining()
+        firstStartIndex = startIndex
         return true
     }
 
@@ -86,9 +94,10 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>) {
         }
     }
 
-    private suspend fun readUntil(predicate: (Byte) -> Boolean = ::isSpace): Boolean {
-        val currentDup = dup ?: current.duplicate()
-        if (dup == null) dup = currentDup
+    private suspend fun readUntil(predicate: (Byte) -> Boolean = ::isSpace,
+                                  useInternalBuffer: Boolean = true): Boolean {
+        if (startIndex >= endIndex && !receive()) return false
+        val currentDup = dup ?: current.duplicate().also { dup = it }
         for (i in startIndex until endIndex) {
             val b = current[i]
             if (predicate(b) || b == '\n'.toByte()) {
@@ -101,9 +110,13 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>) {
         }
         currentDup.limit(endIndex)
         currentDup.position(startIndex)
-        _tmp.clear()
-        _tmp.put(currentDup)
-        tmp = _tmp
+        if (!useInternalBuffer) {
+            startIndex = endIndex
+            return false
+        }
+        internalBuffer.clear()
+        internalBuffer.put(currentDup)
+        tmp = internalBuffer
         while (receive()) {
             for (i in startIndex until endIndex) {
                 val b = current[i]
@@ -184,7 +197,7 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>) {
         skip()
 
         //read host
-        val host: String? = let {
+        host = let {
             if (!readUntil()) return false
             when (tmp) {
                 cachedHost.first -> cachedHost.second
@@ -198,7 +211,7 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>) {
         skip()
 
         //read app
-        val app: String? = let {
+        app = let {
             if (!readUntil()) return false
             when (tmp) {
                 cachedApp.first -> cachedApp.second
@@ -275,7 +288,20 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>) {
         return true
     }
 
-    suspend fun readMessage(): String? {
+    suspend fun readMessageAvailable(): ByteBuffer? {
+        val result = readUntil({ it == '\n'.toByte()}, false)
+        if (tmp.hasRemaining()) return tmp
+        if (result) skipByte()
+        return null
+    }
+
+    suspend fun readMessageBytes(): ByteBuffer? {
+        if (!readUntil({ it == '\n'.toByte() })) return null
+        skipByte()
+        return tmp
+    }
+
+    suspend fun readMessageString(): String? {
         if (!readUntil({ it == '\n'.toByte() })) return null
         skipByte()
         return tmpChars().toString()
@@ -283,6 +309,6 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>) {
 
     suspend fun skipMessage() {
         skip({ it != '\n'.toByte() })
-        skipByte()
+        skipPrefix('\n'.toByte())
     }
 }

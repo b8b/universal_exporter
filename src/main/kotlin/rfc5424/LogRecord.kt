@@ -1,4 +1,4 @@
-package exporter.syslog
+package rfc5424
 
 import java.time.OffsetDateTime
 

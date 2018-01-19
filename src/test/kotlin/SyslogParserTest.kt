@@ -1,7 +1,6 @@
 import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.Logger
 import ch.qos.logback.classic.LoggerContext
-import exporter.syslog.SyslogCollector
 import io.vertx.core.Vertx
 import io.vertx.ext.unit.TestContext
 import io.vertx.ext.unit.junit.VertxUnitRunner
@@ -11,7 +10,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.slf4j.LoggerFactory
 import java.math.BigDecimal
-import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.SocketException
 
@@ -40,7 +38,7 @@ class SyslogParserTest {
         val sock = Socket("localhost", 8088)
         val out = sock.getOutputStream().buffered()
         for (i in 1 .. 1000000) {
-            out.write("<134>1 2018-01-04T16:50:40.342+01:00 myhost myapp 3438 - [meta sequenceId=\"$i\"] hello\n".toByteArray())
+            out.write("<134>1 2018-01-04T16:50:40.342+01:00 myhost myapp 3438 - [meta sequenceId=\"$i\"] {}\n".toByteArray())
         }
         out.flush()
         sock.shutdownOutput()

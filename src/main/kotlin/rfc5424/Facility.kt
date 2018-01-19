@@ -1,4 +1,4 @@
-package exporter.syslog
+package rfc5424
 
 enum class Facility(val description: String) {
     KERN("kernel messages"),

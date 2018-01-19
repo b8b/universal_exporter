@@ -1,4 +1,4 @@
-package exporter.syslog
+package rfc5424
 
 enum class Severity(val description: String) {
     EMERG("Emergency: system is unusable"),
