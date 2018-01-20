@@ -63,9 +63,14 @@ class SyslogCollector(private val vertx: Vertx, val config: SyslogConfig) : Coll
                 val parser = Progressive2(ch)
                 try {
                     while (parser.parse5424()) {
-                        var block = parser.readMessageAvailable() ?: break
-                        if (block[block.position()] == '{'.toByte()) {
+                        val block0 = parser.readMessageAvailable() ?: break
+                        if (block0[block0.position()] == '{'.toByte()) {
                             val jsonParser = JsonFactory().createNonBlockingByteArrayParser()
+                            with(jsonParser.nonBlockingInputFeeder as ByteArrayFeeder) {
+                                val offset = block0.arrayOffset() + block0.position()
+                                val length = block0.remaining()
+                                feedInput(block0.array(), offset, offset + length)
+                            }
                             parse@ while (true) {
                                 val token = jsonParser.nextToken()
                                 when (token) {
@@ -75,11 +80,12 @@ class SyslogCollector(private val vertx: Vertx, val config: SyslogConfig) : Coll
                                     }
                                     JsonToken.NOT_AVAILABLE -> {
                                         with(jsonParser.nonBlockingInputFeeder as ByteArrayFeeder) {
-                                            val offset = block.arrayOffset() + block.position()
-                                            val length = block.remaining()
-                                            feedInput(block.array(), offset, offset + length)
-                                            val nextBlock = parser.readMessageAvailable()
-                                            if (nextBlock != null) block = nextBlock else endOfInput()
+                                            val block = parser.readMessageAvailable()
+                                            if (block == null) endOfInput() else {
+                                                val offset = block.arrayOffset() + block.position()
+                                                val length = block.remaining()
+                                                feedInput(block.array(), offset, offset + length)
+                                            }
                                         }
                                     }
                                 }

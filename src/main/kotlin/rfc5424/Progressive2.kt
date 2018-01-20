@@ -4,12 +4,14 @@ import kotlinx.coroutines.experimental.channels.ReceiveChannel
 import java.nio.ByteBuffer
 import java.nio.charset.Charset
 import java.time.OffsetDateTime
+import java.time.ZoneOffset
 
 class Progressive2(val channel: ReceiveChannel<ByteBuffer>,
-                   val internalBuffer: ByteBuffer = ByteBuffer.allocateDirect(1024 * 1024 * 64)) {
+                   val internalBuffer: ByteBuffer = ByteBuffer.allocateDirect(1024 * 2)) {
 
     private var tmp = internalBuffer
 
+    private var channelClosed = false
     private var current = ByteBuffer.allocate(0)
     private var dup: ByteBuffer? = null
     private var bytesConsumedTotal: Long = 0
@@ -42,10 +44,17 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>,
     fun sd(id: String, key: String): String? = values[id to key]
 
     fun bytesConsumed() = bytesConsumedTotal + startIndex - firstStartIndex
+    fun isClosed() = channelClosed
 
     private suspend fun receive(): Boolean {
+        if (channelClosed) return false
+        val new = channel.receiveOrNull()
+        if (new == null) {
+            channelClosed = true
+            return false
+        }
         bytesConsumedTotal += endIndex - firstStartIndex
-        current = channel.receiveOrNull() ?: return false
+        current = new
         dup = null
         startIndex = current.position()
         endIndex = current.remaining()
@@ -81,9 +90,18 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>,
     }
 
     private suspend fun readDigits(block: (Int) -> Unit): Boolean {
+        while (startIndex >= endIndex) {
+            if (!receive()) return false
+        }
+        var b = current[startIndex]
+        if (b < '0'.toByte() || b > '9'.toByte()) {
+            return false
+        }
+        block(b.toInt() - '0'.toInt())
+        startIndex++
         while (true) {
             for (i in startIndex until endIndex) {
-                val b = current[i]
+                b = current[i]
                 if (b < '0'.toByte() || b > '9'.toByte()) {
                     startIndex = i
                     return true
@@ -96,7 +114,13 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>,
 
     private suspend fun readUntil(predicate: (Byte) -> Boolean = ::isSpace,
                                   useInternalBuffer: Boolean = true): Boolean {
-        if (startIndex >= endIndex && !receive()) return false
+        if (startIndex >= endIndex && !receive()) {
+            val currentDup = dup ?: current.duplicate().also { dup = it }
+            currentDup.limit(startIndex)
+            currentDup.position(startIndex)
+            tmp = currentDup
+            return false
+        }
         val currentDup = dup ?: current.duplicate().also { dup = it }
         for (i in startIndex until endIndex) {
             val b = current[i]
@@ -112,6 +136,7 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>,
         currentDup.position(startIndex)
         if (!useInternalBuffer) {
             startIndex = endIndex
+            tmp = currentDup
             return false
         }
         internalBuffer.clear()
@@ -131,12 +156,13 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>,
         return false
     }
 
-    private suspend fun skipByte(): Boolean {
+    private suspend fun skipByte(): Int {
         while (startIndex >= endIndex) {
-            if (!receive()) return false
+            if (!receive()) return -1
         }
+        val b = current[startIndex]
         startIndex++
-        return true
+        return b.toInt()
     }
 
     private fun decodeQuotedString(sb: StringBuilder, input: CharSequence): Boolean {
@@ -159,7 +185,7 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>,
         return st == 0
     }
 
-    private fun tmpBytes(): ByteBuffer {
+    private fun copyTmpBytes(): ByteBuffer {
         val b = ByteBuffer.allocate(tmp.remaining())
         val origPosition = tmp.position()
         b.put(tmp)
@@ -168,16 +194,75 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>,
         return b.asReadOnlyBuffer()
     }
 
-    private fun tmpChars(cs: Charset = Charsets.UTF_8): CharSequence {
+    private fun copyTmpChars(cs: Charset = Charsets.UTF_8): CharSequence {
         val origPosition = tmp.position()
         val result = cs.decode(tmp)
         tmp.position(origPosition)
         return result
     }
 
+    private suspend fun parseOffset(sign: Int): ZoneOffset? {
+        var hours = 0
+        var minutes = 0
+        if (!readDigits({ hours = hours * 10 + it })) return null
+        if (!skipPrefix(':'.toByte())) return null
+        if (!readDigits({ minutes = minutes * 10 + it })) return null
+        return ZoneOffset.ofHoursMinutes(hours * sign, minutes * sign)
+    }
+
+    private suspend fun parseTs(): Boolean {
+        var year = 0
+        var month = 0
+        var day = 0
+        var hour = 0
+        var minute = 0
+        var second = 0
+        var nanos = 0
+        if (!readDigits({ year = year * 10 + it })) {
+            if (!readUntil()) return false
+            if (tmp == nilBytes) {
+                ts = null
+                return true
+            }
+            return false
+        }
+        if (!skipPrefix('-'.toByte())) return false
+        if (!readDigits({ month = month * 10 + it })) return false
+        if (!skipPrefix('-'.toByte())) return false
+        if (!readDigits({ day = day * 10 + it })) return false
+        if (!skipPrefix('T'.toByte())) return false
+        if (!readDigits({ hour = hour * 10 + it })) return false
+        if (!skipPrefix(':'.toByte())) return false
+        if (!readDigits({ minute = minute * 10 + it })) return false
+        if (!skipPrefix(':'.toByte())) return false
+        if (!readDigits({ second = second * 10 + it })) return false
+        if (skipPrefix('.'.toByte())) {
+            var digits = 0
+            if (!readDigits({ digits++; nanos = nanos * 10 + it })) return false
+            if (digits > 9) return false
+            for (i in digits.inc() .. 9) nanos *= 10
+        }
+        val z = when (skipByte()) {
+            'Z'.toByte().toInt() -> ZoneOffset.UTC
+            '+'.toByte().toInt() -> parseOffset(1) ?: return false
+            '-'.toByte().toInt() -> parseOffset(-1) ?: return false
+            else -> return false
+        }
+        ts = OffsetDateTime.of(year, month, day, hour, minute, second, nanos, z)
+        return true
+    }
+
     suspend fun parse5424(): Boolean {
-        //read pri
+        //reset
         priValue = 0
+        ts = null
+        host = null
+        app = null
+        proc = null
+        msgid = null
+        values.clear()
+
+        //read pri
         if (!skipPrefix('<'.toByte())) return false
         if (!readDigits({ priValue = priValue * 10 + it })) return false
         if (!skipPrefix('>'.toByte())) return false
@@ -187,13 +272,7 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>,
         if (!skip()) return false
 
         //read ts
-        ts = let {
-            if (!readUntil()) return false
-            if (tmp == nilBytes)
-                null
-            else
-                OffsetDateTime.parse(tmpChars(Charsets.US_ASCII))
-        }
+        parseTs()
         skip()
 
         //read host
@@ -203,7 +282,7 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>,
                 cachedHost.first -> cachedHost.second
                 nilBytes -> null
                 else -> {
-                    cachedHost = tmpBytes() to tmpChars().toString()
+                    cachedHost = copyTmpBytes() to copyTmpChars().toString()
                     cachedHost.second
                 }
             }
@@ -217,7 +296,7 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>,
                 cachedApp.first -> cachedApp.second
                 nilBytes -> null
                 else -> {
-                    cachedApp = tmpBytes() to tmpChars().toString()
+                    cachedApp = copyTmpBytes() to copyTmpChars().toString()
                     cachedApp.second
                 }
             }
@@ -242,25 +321,24 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>,
             if (tmp == nilBytes)
                 null
             else
-                tmpChars().toString()
+                copyTmpChars().toString()
         }
         skip()
 
         //read sd
-        values.clear()
         while (skipPrefix('['.toByte())) {
             //read id
             if (!readUntil()) return false
-            val id: String = keys[tmp] ?: tmpChars().toString().also {
-                keys.put(tmpBytes(), it)
+            val id: String = keys[tmp] ?: copyTmpChars().toString().also {
+                keys[copyTmpBytes()] = it
             }
             skip()
             //field kv pairs
             while (true) {
                 if (skipPrefix(']'.toByte())) break
                 if (!readUntil({ it == '='.toByte() || it == ']'.toByte() })) return false
-                val key: String = keys[tmp] ?: tmpChars().toString().also {
-                    keys.put(tmpBytes(), it)
+                val key: String = keys[tmp] ?: copyTmpChars().toString().also {
+                    keys[copyTmpBytes()] = it
                 }
                 if (skipPrefix('='.toByte())) {
                     val value = StringBuilder()
@@ -268,16 +346,15 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>,
                         while (true) {
                             if (!readUntil({ it == '"'.toByte() })) return false
                             skipByte()
-                            if (decodeQuotedString(value, tmpChars()))
-                                break
+                            if (decodeQuotedString(value, copyTmpChars())) break
                             value.append('"')
                         }
                     } else if (readUntil({ isSpace(it) || it == ']'.toByte() })) {
-                        value.append(tmpChars())
+                        value.append(copyTmpChars())
                     } else {
                         return false
                     }
-                    values.put(id to key, value.toString())
+                    values[id to key] = value.toString()
                 } else {
                     return false
                 }
@@ -295,16 +372,10 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>,
         return null
     }
 
-    suspend fun readMessageBytes(): ByteBuffer? {
-        if (!readUntil({ it == '\n'.toByte() })) return null
-        skipByte()
+    suspend fun readMessageFully(): ByteBuffer {
+        val result = readUntil({ it == '\n'.toByte() })
+        if (result) skipByte()
         return tmp
-    }
-
-    suspend fun readMessageString(): String? {
-        if (!readUntil({ it == '\n'.toByte() })) return null
-        skipByte()
-        return tmpChars().toString()
     }
 
     suspend fun skipMessage() {
