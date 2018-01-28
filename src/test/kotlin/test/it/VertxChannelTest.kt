@@ -1,3 +1,5 @@
+package test.it
+
 import org.cikit.core.coroutineHandler
 import org.cikit.core.readHeaders
 import org.cikit.core.toByteChannel

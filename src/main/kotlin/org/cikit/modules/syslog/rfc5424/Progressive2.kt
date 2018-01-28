@@ -153,6 +153,7 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>,
                 tmp.put(b)
             }
         }
+        tmp.flip()
         return false
     }
 
@@ -326,7 +327,9 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>,
         skip()
 
         //read sd
+        var hasSd = false
         while (skipPrefix('['.toByte())) {
+            hasSd = true
             //read id
             if (!readUntil()) return false
             val id: String = keys[tmp] ?: copyTmpChars().toString().also {
@@ -359,6 +362,10 @@ class Progressive2(val channel: ReceiveChannel<ByteBuffer>,
                     return false
                 }
             }
+        }
+        if (!hasSd) {
+            if (!readUntil()) return false
+            if (tmp != nilBytes) return false
         }
         skip()
 
