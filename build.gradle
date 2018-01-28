@@ -12,7 +12,7 @@ buildscript {
 }
 
 group = "org.cikit"
-version = "0.2.0"
+version = project.properties["VERSION"]
 
 apply plugin: "java"
 apply plugin: "kotlin"
@@ -37,8 +37,8 @@ dependencies {
     compile("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     compile("org.jetbrains.kotlin:kotlin-reflect")
 
-    compile("org.jetbrains.kotlinx:kotlinx-coroutines-core:0.21")
-    compile("org.jetbrains.kotlinx:kotlinx-coroutines-io:0.21")
+    compile("org.jetbrains.kotlinx:kotlinx-coroutines-core:0.22")
+    compile("org.jetbrains.kotlinx:kotlinx-coroutines-io:0.22")
     compile("org.jetbrains.kotlinx:kotlinx-html-jvm:0.6.8")
 
     compile("com.typesafe:config:1.2.1")
@@ -177,9 +177,9 @@ bintray {
         labels = ['prometheus', 'kotlin', 'metrics-exporters', 'monitoring']
         publicDownloadNumbers = true
         version {
-            name = version
+            name = project.version
             desc = 'Collection of metrics exporters for prometheus'
-            vcsTag = "v$version"
+            vcsTag = "v${project.version}"
         }
     }
 }
