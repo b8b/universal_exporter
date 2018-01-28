@@ -1,4 +1,4 @@
-package rfc5424
+package org.cikit.modules.syslog.rfc5424
 
 enum class Severity(val description: String) {
     EMERG("Emergency: system is unusable"),

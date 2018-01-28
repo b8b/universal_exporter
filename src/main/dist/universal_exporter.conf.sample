@@ -5,6 +5,11 @@
 # log to file
 #log.file = /var/log/universal_exporter/universal_exporter.log
 
+# activate hotspot metrics collector for local jvm
+hotspot [
+    {}
+]
+
 syslog [
     {
         #currently, only tcp implemented

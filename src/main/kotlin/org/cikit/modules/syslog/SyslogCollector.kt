@@ -1,13 +1,8 @@
-package exporter.syslog
+package org.cikit.modules.syslog
 
 import com.fasterxml.jackson.core.JsonFactory
 import com.fasterxml.jackson.core.JsonToken
 import com.fasterxml.jackson.core.async.ByteArrayFeeder
-import com.typesafe.config.Config
-import exporter.Collector
-import exporter.MetricType
-import exporter.MetricWriter
-import exporter.toReceiveChannel
 import io.vertx.core.Vertx
 import io.vertx.core.buffer.Buffer
 import io.vertx.core.net.NetServer
@@ -17,14 +12,12 @@ import io.vertx.kotlin.core.net.NetServerOptions
 import io.vertx.kotlin.coroutines.awaitResult
 import io.vertx.kotlin.coroutines.dispatcher
 import kotlinx.coroutines.experimental.launch
+import org.cikit.core.Collector
+import org.cikit.core.MetricType
+import org.cikit.core.MetricWriter
+import org.cikit.core.toReceiveChannel
+import org.cikit.modules.syslog.rfc5424.Progressive2
 import org.slf4j.LoggerFactory
-import rfc5424.Progressive2
-
-data class SyslogConfig(val port: Int) {
-    constructor(config: Config) : this(
-            config.getInt("port")
-    )
-}
 
 class SyslogCollector(private val vertx: Vertx, val config: SyslogConfig) : Collector {
 
@@ -32,6 +25,16 @@ class SyslogCollector(private val vertx: Vertx, val config: SyslogConfig) : Coll
     private var clientsDisconnectedTotal: Long = 0
     private var messagesProcessedTotal: Long = 0
     private var bytesProcessedTotal: Long = 0
+
+    init {
+        launch(vertx.dispatcher()) {
+            awaitResult<NetServer> {
+                vertx.createNetServer(NetServerOptions(receiveBufferSize = 4096))
+                        .connectHandler(::handleConnect)
+                        .listen(config.port, it)
+            }
+        }
+    }
 
     override val instance: String
         get() = "localhost:${config.port}"
@@ -113,11 +116,4 @@ class SyslogCollector(private val vertx: Vertx, val config: SyslogConfig) : Coll
         }
     }
 
-    suspend fun start() {
-        awaitResult<NetServer> {
-            vertx.createNetServer(NetServerOptions(receiveBufferSize = 4096))
-                    .connectHandler(::handleConnect)
-                    .listen(config.port, it)
-        }
-    }
 }

@@ -1,7 +1,5 @@
-package exporter.haproxy
+package org.cikit.modules.haproxy
 
-import com.typesafe.config.Config
-import exporter.*
 import io.vertx.core.Vertx
 import io.vertx.core.buffer.Buffer
 import io.vertx.core.net.NetSocket
@@ -12,28 +10,18 @@ import io.vertx.kotlin.coroutines.awaitResult
 import io.vertx.kotlin.coroutines.toChannel
 import kotlinx.coroutines.experimental.io.readUTF8Line
 import kotlinx.coroutines.experimental.withTimeout
+import org.cikit.core.*
 import java.io.IOException
 import java.net.URL
 import java.util.concurrent.TimeUnit
 
 private suspend fun MetricWriter.metricValueIfNonNull(name: String, value: String?,
-                                                      type: MetricType,
-                                                      description: String,
-                                                      vararg fields: Pair<String, String>) {
+                                                                     type: MetricType,
+                                                                     description: String,
+                                                                     vararg fields: Pair<String, String>) {
     if (value != null && !value.isBlank()) {
         metricValue(name, value.toLong(), type, description, *fields)
     }
-}
-
-data class HAProxyConfig(val instance: String, val endpoints: List<URL>) {
-    constructor(config: Config) : this(
-            config.getString("instance"),
-            if (config.hasPath("endpoints")) {
-                config.getConfigList("endpoints").map { it.withFallback(config) }
-            } else {
-                listOf(config)
-            }.map { URL(it.getString("url")) }
-    )
 }
 
 class HAProxyCollector(private val vertx: Vertx, val config: HAProxyConfig) : Collector {

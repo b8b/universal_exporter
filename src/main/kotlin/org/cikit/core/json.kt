@@ -1,4 +1,4 @@
-package exporter
+package org.cikit.core
 
 import com.fasterxml.jackson.core.JsonParser
 import com.fasterxml.jackson.core.JsonToken

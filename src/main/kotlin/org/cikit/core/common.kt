@@ -1,4 +1,4 @@
-package exporter
+package org.cikit.core
 
 enum class MetricType {
     Counter,
@@ -21,14 +21,14 @@ interface MetricWriter {
     suspend fun metricValue(v: MetricValue)
 
     suspend fun metricValue(name: String, value: Number, type: MetricType,
-                    description: String? = null,
-                    ts: Long? = null,
-                    vararg fields: Pair<String, String>) =
+                            description: String? = null,
+                            ts: Long? = null,
+                            vararg fields: Pair<String, String>) =
             metricValue(MetricValue(name, value, type, description, ts, fields.toList()))
 
     suspend fun metricValue(name: String, value: Number, type: MetricType,
-                    description: String? = null,
-                    vararg fields: Pair<String, String>) =
+                            description: String? = null,
+                            vararg fields: Pair<String, String>) =
             metricValue(MetricValue(name, value, type, description, null, fields.toList()))
 
 }

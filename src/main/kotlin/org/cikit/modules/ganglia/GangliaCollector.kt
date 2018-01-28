@@ -1,12 +1,11 @@
-package exporter.ganglia
+package org.cikit.modules.ganglia
 
 import com.fasterxml.aalto.AsyncXMLStreamReader
 import com.fasterxml.aalto.stax.InputFactoryImpl
-import com.typesafe.config.Config
-import exporter.Collector
-import exporter.MetricType
-import exporter.MetricWriter
-import exporter.toByteChannel
+import org.cikit.core.Collector
+import org.cikit.core.MetricType
+import org.cikit.core.MetricWriter
+import org.cikit.core.toByteChannel
 import io.vertx.core.Vertx
 import io.vertx.core.buffer.Buffer
 import io.vertx.core.net.NetSocket
@@ -42,24 +41,6 @@ private fun String.splitToPair(string: String): Pair<String, String>? {
     } else {
         substring(0, i) to substring(i + 1, length)
     }
-}
-
-data class GangliaConfig(val instance: String, val endpoints: List<GangliaEndpoint>) {
-    constructor(config: Config) : this(
-            config.getString("instance"),
-            if (config.hasPath("endpoints")) {
-                config.getConfigList("endpoints").map { it.withFallback(config) }
-            } else {
-                listOf(config)
-            }.map(::GangliaEndpoint)
-    )
-}
-
-data class GangliaEndpoint(val host: String, val port: Int) {
-    constructor(config: Config) : this(
-            config.getString("host"),
-            config.getInt("port")
-    )
 }
 
 class GangliaCollector(private val vertx: Vertx, private val config: GangliaConfig) : Collector {

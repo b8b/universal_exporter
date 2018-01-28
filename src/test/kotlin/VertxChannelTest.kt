@@ -1,6 +1,6 @@
-import exporter.coroutineHandler
-import exporter.readHeaders
-import exporter.toByteChannel
+import org.cikit.core.coroutineHandler
+import org.cikit.core.readHeaders
+import org.cikit.core.toByteChannel
 import io.vertx.core.Vertx
 import io.vertx.core.buffer.Buffer
 import io.vertx.core.http.HttpServer
@@ -14,11 +14,9 @@ import io.vertx.kotlin.core.http.HttpServerOptions
 import io.vertx.kotlin.core.net.NetClientOptions
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.awaitResult
-import io.vertx.kotlin.coroutines.dispatcher
 import io.vertx.kotlin.coroutines.toChannel
 import kotlinx.coroutines.experimental.io.readUTF8Line
 import kotlinx.coroutines.experimental.io.writeStringUtf8
-import kotlinx.coroutines.experimental.launch
 import kotlinx.coroutines.experimental.runBlocking
 import org.junit.After
 import org.junit.Before

@@ -1,5 +1,5 @@
 buildscript {
-    ext.kotlin_version = "1.2.20"
+    ext.kotlin_version = "1.2.21"
 
     repositories {
         jcenter()
@@ -12,7 +12,7 @@ buildscript {
 }
 
 group = "org.cikit"
-version = project.properties["VERSION"]
+version = "0.2.0"
 
 apply plugin: "java"
 apply plugin: "kotlin"
@@ -64,7 +64,7 @@ dependencies {
     testCompile("io.vertx:vertx-unit:$vertxVersion")
 }
 
-mainClassName = "exporter.VerticleKt"
+mainClassName = "org.cikit.core.MainKt"
 applicationDefaultJvmArgs = ["-Xmx20m"]
 
 run {
@@ -80,6 +80,55 @@ kotlin {
 tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).all {
     kotlinOptions {
         jvmTarget = "1.8"
+    }
+}
+
+def modules = sourceSets.main.allSource.collect {
+    def pkgDir = it.parentFile
+    def modName = pkgDir.name
+    pkgDir = pkgDir.parentFile
+    if (pkgDir != null && pkgDir.name == "modules") {
+        pkgDir = pkgDir.parentFile
+        if (pkgDir != null && pkgDir.name == "cikit") {
+            pkgDir = pkgDir.parentFile
+            if (pkgDir != null && pkgDir.name == "org") {
+                return modName
+            }
+        }
+    }
+    return null
+}.toSet() - null
+
+for (module in modules) {
+    sourceSets.create(module) {
+        java {
+            srcDirs = ["src/main/java"]
+            include "org/cikit/modules/$module/**"
+        }
+        kotlin {
+            srcDirs = ["src/main/kotlin"]
+            include "org/cikit/modules/$module/**"
+        }
+        resources {
+            srcDirs = ["src/main/resources"]
+        }
+        compileClasspath += sourceSets.main.runtimeClasspath
+    }
+}
+
+sourceSets {
+    main {
+        java {
+            include("org/cikit/core/**")
+        }
+        kotlin {
+            include("org/cikit/core/**")
+        }
+    }
+    test {
+        for (module in modules) {
+            compileClasspath += sourceSets[module].runtimeClasspath
+        }
     }
 }
 

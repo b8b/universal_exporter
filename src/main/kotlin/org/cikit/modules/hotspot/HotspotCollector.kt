@@ -1,14 +1,14 @@
-package exporter.java
+package org.cikit.modules.hotspot
 
-import exporter.Collector
-import exporter.MetricType
-import exporter.MetricValue
-import exporter.MetricWriter
+import org.cikit.core.Collector
+import org.cikit.core.MetricType
+import org.cikit.core.MetricValue
+import org.cikit.core.MetricWriter
 import io.prometheus.client.CollectorRegistry
 import io.prometheus.client.hotspot.DefaultExports
 import io.vertx.core.Vertx
 
-class JavaCollector(private val vertx: Vertx) : Collector {
+class HotspotCollector(private val vertx: Vertx) : Collector {
 
     override val instance: String
         get() = "local"

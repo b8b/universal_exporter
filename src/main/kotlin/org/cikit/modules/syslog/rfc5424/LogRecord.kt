@@ -1,4 +1,4 @@
-package rfc5424
+package org.cikit.modules.syslog.rfc5424
 
 import java.time.OffsetDateTime
 

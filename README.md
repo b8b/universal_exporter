@@ -8,8 +8,8 @@ Collection of metrics exporters for prometheus.
 
 * RabbitMQ exporter using admin interface (rabbit plugin)
 * HAProxy exporter using CSV status page via http
-* Ganglia/hsflowd exporter
- 
+* Ganglia/hsflowd exporter using gmond tcp socket
+
 ## Running with gradle 
 
     cp universal_exporter.conf.sample universal_exporter.con

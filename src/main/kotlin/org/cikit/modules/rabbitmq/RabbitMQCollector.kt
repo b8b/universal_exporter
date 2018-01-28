@@ -1,12 +1,10 @@
-package exporter.rabbitmq
+package org.cikit.modules.rabbitmq
 
 import com.fasterxml.jackson.core.JsonFactory
 import com.fasterxml.jackson.core.JsonToken
 import com.fasterxml.jackson.core.async.ByteArrayFeeder
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.typesafe.config.Config
-import exporter.*
 import io.vertx.core.Vertx
 import io.vertx.core.buffer.Buffer
 import io.vertx.core.net.NetSocket
@@ -16,9 +14,8 @@ import io.vertx.kotlin.core.net.NetClientOptions
 import io.vertx.kotlin.coroutines.awaitResult
 import io.vertx.kotlin.coroutines.toChannel
 import kotlinx.coroutines.experimental.withTimeout
+import org.cikit.core.*
 import java.io.IOException
-import java.net.URL
-import java.util.*
 import java.util.concurrent.TimeUnit
 
 private data class ExchangeMessageStats(val publish_in: Long, val publish_out: Long)
@@ -41,24 +38,6 @@ private data class Queue(
         val message_stats: QueueMessageStats?
 )
 
-data class RabbitMQConfig(val instance: String, val endpoints: List<RabbitMQEndpoint>) {
-    constructor(config: Config) : this(
-            config.getString("instance"),
-            if (config.hasPath("endpoints")) {
-                config.getConfigList("endpoints").map { it.withFallback(config) }
-            } else {
-                listOf(config)
-            }.map(::RabbitMQEndpoint)
-    )
-}
-
-data class RabbitMQEndpoint(val url: URL, val encodedCredentials: String) {
-    constructor(config: Config) : this(
-            URL(config.getString("url")),
-            Base64.getUrlEncoder().encodeToString("${config.getString("username")}:${config.getString("password")}".toByteArray())
-    )
-}
-
 class RabbitMQCollector(private val vertx: Vertx, val config: RabbitMQConfig) : Collector {
 
     override val instance: String get() = config.instance
@@ -80,7 +59,7 @@ class RabbitMQCollector(private val vertx: Vertx, val config: RabbitMQConfig) : 
     }
 
     private suspend fun writeQueueMetrics(writer: MetricWriter, q: Queue,
-                                     vararg fields: Pair<String, String>) {
+                                          vararg fields: Pair<String, String>) {
         writer.metricValue("rmq_messages_total", q.messages,
                 MetricType.Gauge, "Sum of ready and unacknowledged messages (queue depth).", *fields)
 

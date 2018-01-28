@@ -11,7 +11,7 @@
 #                                         Set it to YES to enable prometheus
 # universal_exporter_daemonargs (string): Set additional jvm arguments
 #                                         Default is "-c -u prometheus"
-# universal_exporter_javavm (string):     Set path to java 
+# universal_exporter_javavm (string):     Set path to java
 #                                         Default is "@PREFIX@/openjdk8/bin/java"
 # universal_exporter_javaargs (string):   Set additional jvm arguments
 #                                         Default is "-XX:CICompilerCount=2 -XX:+UseSerialGC -Xmx20m"
@@ -39,7 +39,7 @@ command_args="-p ${pidfile} ${universal_exporter_daemonargs} \
   -Dvertx.cacheDirBase=/tmp/.vertx \
   -cp @PREFIX@/share/universal_exporter/universal_exporter-@VERSION@.jar \
   ${universal_exporter_javaargs} \
-  exporter.VerticleKt ${universal_exporter_args} \
+  org.cikit.core.MainKt ${universal_exporter_args} \
   > /var/log/universal_exporter/main.out 2>&1"
 
 load_rc_config $name
