@@ -134,6 +134,10 @@ sourceSets {
 }
 
 jar {
+    from sourceSets.main.output
+    for (module in modules) {
+        from sourceSets[module].output
+    }
     manifest {
         attributes["Implementation-Title"] = project.name
         attributes["Implementation-Version"] = version
