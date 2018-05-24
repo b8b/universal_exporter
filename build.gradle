@@ -1,5 +1,5 @@
 buildscript {
-    ext.kotlin_version = "1.2.21"
+    ext.kotlin_version = "1.2.40"
 
     repositories {
         jcenter()
@@ -31,14 +31,14 @@ repositories {
 
 dependencies {
     def logbackVersion = "1.2.3"
-    def vertxVersion = "3.5.0"
+    def vertxVersion = "3.5.1"
     def jacksonVersion = "2.9.2"
 
     compile("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     compile("org.jetbrains.kotlin:kotlin-reflect")
 
-    compile("org.jetbrains.kotlinx:kotlinx-coroutines-core:0.22")
-    compile("org.jetbrains.kotlinx:kotlinx-coroutines-io:0.22")
+    compile("org.jetbrains.kotlinx:kotlinx-coroutines-core:0.22.5")
+    compile("org.jetbrains.kotlinx:kotlinx-coroutines-io:0.22.5")
     compile("org.jetbrains.kotlinx:kotlinx-html-jvm:0.6.8")
 
     compile("com.typesafe:config:1.2.1")
