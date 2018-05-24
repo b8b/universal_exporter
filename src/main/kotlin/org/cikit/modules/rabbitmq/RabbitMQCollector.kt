@@ -34,7 +34,8 @@ private data class Queue(
         val messages: Long,
         val messages_ready: Long,
         val messages_unacknowledged: Long,
-        val head_message_timestamp: Int?,
+        val head_message_timestamp: Long?,
+        val head_message_age: Long?,
         val message_stats: QueueMessageStats?
 )
 
@@ -51,10 +52,12 @@ class RabbitMQCollector(private val vertx: Vertx, val config: RabbitMQConfig) : 
 
     private suspend fun writeExchangeMetrics(writer: MetricWriter, x: Exchange,
                                              vararg fields: Pair<String, String>) {
-        writer.metricValue("rmq_messages_out", x.message_stats?.publish_out ?: -1L,
+        writer.metricValue("rmq_messages_out", x.message_stats?.publish_out
+                ?: -1L,
                 MetricType.Counter, "Count of messages acknowledged on queue or published out of exchange.", *fields)
 
-        writer.metricValue("rmq_messages_in", x.message_stats?.publish_in ?: -1L,
+        writer.metricValue("rmq_messages_in", x.message_stats?.publish_in
+                ?: -1L,
                 MetricType.Counter, "Count of messages published on queue or exchange.", *fields)
     }
 
@@ -69,11 +72,17 @@ class RabbitMQCollector(private val vertx: Vertx, val config: RabbitMQConfig) : 
         writer.metricValue("rmq_messages_unack", q.messages_unacknowledged,
                 MetricType.Gauge, "Number of messages delivered to clients but not yet acknowledged.", *fields)
 
-        writer.metricValue("rmq_head_message_ts", q.head_message_timestamp ?: -1,
+        writer.metricValue("rmq_head_message_ts", q.head_message_timestamp
+                ?: -1,
                 MetricType.Gauge, "The timestamp property of the first message in the queue, if present." +
                 " Timestamps of messages only appear when they are in the paged-in state.", *fields)
 
-        writer.metricValue("rmq_messages_out", q.message_stats?.let { it.publish - q.messages } ?: -1L,
+        writer.metricValue("rmq_head_message_age", q.head_message_age ?: -1,
+                MetricType.Gauge, "The age of the first message in the queue, calculated via head_message_ts." +
+                " Timestamps of messages only appear when they are in the paged-in state.", *fields)
+
+        writer.metricValue("rmq_messages_out", q.message_stats?.let { it.publish - q.messages }
+                ?: -1L,
                 MetricType.Counter, "Count of messages acknowledged on queue or published out of exchange.", *fields)
 
         writer.metricValue("rmq_messages_in", q.message_stats?.publish ?: -1L,
@@ -121,6 +130,7 @@ class RabbitMQCollector(private val vertx: Vertx, val config: RabbitMQConfig) : 
 
                 val buffer = ByteArray(1024 * 4)
                 val objBuffer = JsonObjectBuffer()
+                val now = System.currentTimeMillis() / 1000L
 
                 val p = JsonFactory().createNonBlockingByteArrayParser()
                 parse@ while (true) {
@@ -149,7 +159,10 @@ class RabbitMQCollector(private val vertx: Vertx, val config: RabbitMQConfig) : 
                                             "exchange" to x.name)
                                 }
                                 else -> {
-                                    val q = queueObjectReader.readValue<Queue>(it.asParserOnFirstToken())
+                                    val q = with(queueObjectReader.readValue<Queue>(it.asParserOnFirstToken())) {
+                                        if (head_message_timestamp == null) this
+                                        else this.copy(head_message_age = now - head_message_timestamp)
+                                    }
                                     writeQueueMetrics(writer, q, "instance" to instance,
                                             "vhost" to q.vhost,
                                             "queue" to q.name)
