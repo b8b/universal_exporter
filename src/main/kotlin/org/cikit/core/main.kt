@@ -13,7 +13,6 @@ import io.vertx.kotlin.core.http.HttpServerOptions
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.awaitResult
 import io.vertx.kotlin.coroutines.dispatcher
-import kotlinx.coroutines.experimental.cancel
 import kotlinx.coroutines.experimental.launch
 import kotlinx.coroutines.experimental.withTimeout
 import org.slf4j.LoggerFactory
@@ -24,10 +23,7 @@ import java.util.concurrent.TimeUnit
 
 fun Route.coroutineHandler(timeout: Long? = 10000L, fn: suspend (RoutingContext) -> Unit) {
     handler { ctx ->
-        launch(ctx.vertx().dispatcher()) {
-            ctx.request().connection().closeHandler {
-                this.coroutineContext.cancel(RuntimeException("client disconnected"))
-            }
+        val job = launch(ctx.vertx().dispatcher()) {
             try {
                 if (timeout == null) {
                     fn(ctx)
@@ -40,12 +36,15 @@ fun Route.coroutineHandler(timeout: Long? = 10000L, fn: suspend (RoutingContext)
                 ctx.fail(e)
             }
         }
+        ctx.request().connection().closeHandler {
+            job.cancel(RuntimeException("client disconnected"))
+        }
     }
 }
 
 class Verticle(private val fileConfig: Config) : CoroutineVerticle() {
 
-    suspend override fun start() {
+    override suspend fun start() {
         val router = Router.router(vertx)
         val endpoints = mutableSetOf<String>()
 
@@ -59,7 +58,7 @@ class Verticle(private val fileConfig: Config) : CoroutineVerticle() {
         }
 
         router.get("/").coroutineHandler { ctx ->
-            index(ctx, endpoints.toList().sorted())
+            index(ctx, endpoints.asSequence().sorted().toList())
         }
 
         awaitResult<HttpServer> {
@@ -70,13 +69,13 @@ class Verticle(private val fileConfig: Config) : CoroutineVerticle() {
     }
 
     private fun index(ctx: RoutingContext, endpoints: List<String>) {
-        ByteArrayOutputStream().use {
-            it.writer().use { out ->
-                out.write("<!DOCTYPE html>\n")
-                out.appendIndex(endpoints.map { "metrics/$it" })
+        ByteArrayOutputStream().use { out ->
+            out.writer().use { writer ->
+                writer.write("<!DOCTYPE html>\n")
+                writer.appendIndex(endpoints.map { "metrics/$it" })
             }
             ctx.response().putHeader("Content-Type", "text/html; charset=UTF-8")
-            ctx.response().end(Buffer.buffer(it.toByteArray()))
+            ctx.response().end(Buffer.buffer(out.toByteArray()))
         }
     }
 

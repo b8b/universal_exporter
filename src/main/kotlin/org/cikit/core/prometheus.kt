@@ -4,7 +4,7 @@ import kotlinx.coroutines.experimental.io.ByteWriteChannel
 import kotlinx.coroutines.experimental.io.writeStringUtf8
 import java.io.StringWriter
 
-val PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
+const val PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
 
 fun checkPrometheusMetricName(name: String): Boolean {
     if (name.isEmpty()) {
@@ -110,7 +110,7 @@ class PrometheusMetricWriter(private val channel: ByteWriteChannel) : MetricWrit
 
     private val metricSet = mutableSetOf<String>()
 
-    suspend override fun metricValue(v: MetricValue) {
+    override suspend fun metricValue(v: MetricValue) {
         val withHeader = !metricSet.contains(v.name)
         if (withHeader && !checkPrometheusMetricName(v.name)) {
             //skip metric

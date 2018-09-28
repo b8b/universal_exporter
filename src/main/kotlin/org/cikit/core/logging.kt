@@ -35,7 +35,7 @@ fun configureLogging(config: Config) {
         fa.file = logfilePath
         val policy = TimeBasedRollingPolicy<ILoggingEvent>()
         policy.context = lc
-        policy.fileNamePattern = "${logfilePath}-%d{yyyy-MM-dd}.log"
+        policy.fileNamePattern = "$logfilePath-%d{yyyy-MM-dd}.log"
         policy.setParent(fa)
         policy.start()
         fa.rollingPolicy = policy

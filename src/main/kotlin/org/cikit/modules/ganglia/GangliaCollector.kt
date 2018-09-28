@@ -226,7 +226,7 @@ class GangliaCollector(private val vertx: Vertx, private val config: GangliaConf
         throw IllegalStateException()
     }
 
-    suspend override fun export(writer: MetricWriter) {
+    override suspend fun export(writer: MetricWriter) {
         val metricInfo = MutableMetricInfo()
         val (_, socket) = connect()
         try {

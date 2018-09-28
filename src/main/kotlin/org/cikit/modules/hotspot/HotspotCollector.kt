@@ -17,7 +17,7 @@ class HotspotCollector(private val vertx: Vertx) : Collector {
         DefaultExports.initialize()
     }
 
-    suspend override fun export(writer: MetricWriter) {
+    override suspend fun export(writer: MetricWriter) {
         val metricValues = CollectorRegistry.defaultRegistry.metricFamilySamples().asSequence().flatMap { metric ->
             metric.samples.asSequence().map { sample ->
                 MetricValue(

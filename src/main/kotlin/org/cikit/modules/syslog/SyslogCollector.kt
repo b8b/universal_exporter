@@ -39,7 +39,7 @@ class SyslogCollector(private val vertx: Vertx, val config: SyslogConfig) : Coll
     override val instance: String
         get() = "localhost:${config.port}"
 
-    suspend override fun export(writer: MetricWriter) {
+    override suspend fun export(writer: MetricWriter) {
         val fields = "instance" to config.port.toString()
         writer.metricValue("syslog_up", 1, MetricType.Gauge,
                 "syslog exporter", fields)
