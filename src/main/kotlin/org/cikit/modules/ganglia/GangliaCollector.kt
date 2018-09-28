@@ -64,26 +64,21 @@ class GangliaCollector(private val vertx: Vertx, private val config: GangliaConf
                     instAndName.second
                 }
             }
-            // hsflowd systemd service metrics
-            "vm cpu" -> {
+            // hsflowd systemd service / vm metrics
+            in listOf("vm cpu", "vm memory", "vm network") -> {
                 metricInfo.desc = metricInfo.desc?.substringAfterLast(": ")
-                val instAndName = metric.first.splitToPair(".service.vcpu_")
-                if (instAndName == null) {
-                    metric.first
-                } else {
-                    fields.add("service" to instAndName.first)
-                    instAndName.second.replace('.', '_')
-                }
-            }
-            // hsflowd systemd service metrics
-            "vm memory" -> {
-                metricInfo.desc = metricInfo.desc?.substringAfterLast(": ")
-                val instAndName = metric.first.splitToPair(".service.vmem_")
-                if (instAndName == null) {
-                    metric.first
-                } else {
-                    fields.add("service" to instAndName.first)
-                    instAndName.second.replace('.', '_')
+                //e.g. postfix.service.vmem_total -> ("postfix.service" to "vmem_total")
+                val instAndName = metric.first.splitToPair(".")
+                when {
+                    instAndName == null -> metric.first
+                    instAndName.first.endsWith(".service") -> {
+                        fields.add("service" to instAndName.first.removeSuffix(".service"))
+                        "service_${instAndName.second}"
+                    }
+                    else -> {
+                        fields.add("vm" to instAndName.first)
+                        "vm_${instAndName.second}"
+                    }
                 }
             }
             // sflow-agent jvm metrics
