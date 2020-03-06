@@ -1,22 +1,27 @@
 package org.cikit.modules.rabbitmq
 
 import com.fasterxml.jackson.core.JsonFactory
+import com.fasterxml.jackson.core.JsonParser
 import com.fasterxml.jackson.core.JsonToken
 import com.fasterxml.jackson.core.async.ByteArrayFeeder
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.vertx.core.Vertx
 import io.vertx.core.buffer.Buffer
-import io.vertx.core.net.NetSocket
+import io.vertx.core.http.HttpClient
+import io.vertx.core.http.HttpClientOptions
+import io.vertx.core.http.HttpClientResponse
 import io.vertx.core.streams.ReadStream
-import io.vertx.core.streams.WriteStream
-import io.vertx.kotlin.core.net.NetClientOptions
-import io.vertx.kotlin.coroutines.awaitResult
+import io.vertx.kotlin.coroutines.dispatcher
 import io.vertx.kotlin.coroutines.toChannel
-import kotlinx.coroutines.experimental.withTimeout
-import org.cikit.core.*
-import java.io.IOException
-import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+import org.cikit.core.Collector
+import org.cikit.core.JsonObjectBuffer
+import org.cikit.core.MetricType
+import org.cikit.core.MetricWriter
 
 private data class ExchangeMessageStats(val publish_in: Long, val publish_out: Long)
 
@@ -39,11 +44,19 @@ private data class Queue(
         val message_stats: QueueMessageStats?
 )
 
-class RabbitMQCollector(private val vertx: Vertx, val config: RabbitMQConfig) : Collector {
+class RabbitMQCollector(private val vx: Vertx, val config: RabbitMQConfig) : Collector {
 
     override val instance: String get() = config.instance
 
-    private val client = vertx.createNetClient(NetClientOptions(connectTimeout = 3000))
+    private var _client: HttpClient? = null
+    private fun client(): HttpClient {
+        return _client ?: let {
+            val newClient = vx.createHttpClient(HttpClientOptions()
+                    .setConnectTimeout(3000))
+            _client = newClient
+            newClient
+        }
+    }
 
     private val objectMapper = jacksonObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
@@ -94,86 +107,82 @@ class RabbitMQCollector(private val vertx: Vertx, val config: RabbitMQConfig) : 
         export(writer, "queues")
     }
 
-    private suspend fun connect(): Pair<RabbitMQEndpoint, NetSocket> {
-        for (endpointConfig in config.endpoints) {
-            try {
-                val port = if (endpointConfig.url.port <= 0) 80 else endpointConfig.url.port
-                val socket = awaitResult<NetSocket> {
-                    client.connect(port, endpointConfig.url.host, it)
-                }
-                return Pair(endpointConfig, socket)
-            } catch (ex: IOException) {
-                if (endpointConfig === config.endpoints.last()) {
-                    throw ex
-                }
+    private suspend fun connect(path: String): Pair<RabbitMQEndpoint, HttpClientResponse> {
+        val respAvailChannel = Channel<HttpClientResponse>()
+        val endpoint = config.endpoints.random()
+        val url = endpoint.url
+        val port = if (url.port <= 0) 80 else url.port
+        val uri = "${url.path}/$path"
+        val req = client().get(port, url.host, uri) { resp ->
+            GlobalScope.launch(vx.dispatcher()) {
+                respAvailChannel.send(resp)
             }
         }
-        throw IllegalStateException()
+        req.exceptionHandler { ex ->
+            respAvailChannel.close(ex)
+        }
+        req.putHeader("user-agent", "Cowgirl/0.1")
+        req.putHeader("accept", "*/*")
+        req.putHeader("authorization", "Basic ${endpoint.encodedCredentials}")
+        req.end()
+        return Pair(endpoint, respAvailChannel.receive())
     }
 
     private suspend fun export(writer: MetricWriter, endpoint: String) {
-        val (config, socket) = connect()
-        try {
-            withTimeout(3, TimeUnit.SECONDS) {
-                val sendChannel = (socket as WriteStream<Buffer>).toChannel(vertx)
-                sendChannel.send(Buffer.buffer("GET ${config.url.path}/$endpoint HTTP/1.0\r\n" +
-                        "Host: ${config.url.host}:${config.url.port}\r\n" +
-                        "User-Agent: Cowgirl/0.1\r\n" +
-                        "Accept: */*\r\n" +
-                        "Authorization: Basic ${config.encodedCredentials}\r\n" +
-                        "\r\n"))
+        withTimeout(3_000L) {
+            val (_, socket) = connect(endpoint)
+            val readChannel = (socket as ReadStream<Buffer>).toChannel(vx)
 
-                val readChannel = (socket as ReadStream<Buffer>).toByteChannel(vertx)
+            val p = JsonFactory().createNonBlockingByteArrayParser()
+            val objBuffer = JsonObjectBuffer()
 
-                //read http headers
-                readHeaders(readChannel)
-
-                val buffer = ByteArray(1024 * 4)
-                val objBuffer = JsonObjectBuffer()
-                val now = System.currentTimeMillis() / 1000L
-
-                val p = JsonFactory().createNonBlockingByteArrayParser()
-                parse@ while (true) {
-                    val token = p.nextToken()
-                    when (token) {
-                        null -> {
-                            //EOF
-                            break@parse
-                        }
-                        JsonToken.NOT_AVAILABLE -> {
-                            with(p.nonBlockingInputFeeder as ByteArrayFeeder) {
-                                val read = readChannel.readAvailable(buffer)
-                                if (read < 0) {
-                                    endOfInput()
-                                } else {
-                                    feedInput(buffer, 0, read)
-                                }
-                            }
-                        }
-                        else -> objBuffer.processEvent(p)?.let {
-                            when (endpoint) {
-                                "exchanges" -> {
-                                    val x = exchangeObjectReader.readValue<Exchange>(it.asParserOnFirstToken())
-                                    writeExchangeMetrics(writer, x, "instance" to instance,
-                                            "vhost" to x.vhost,
-                                            "exchange" to x.name)
-                                }
-                                else -> {
-                                    val q = with(queueObjectReader.readValue<Queue>(it.asParserOnFirstToken())) {
-                                        if (head_message_timestamp == null) this
-                                        else this.copy(head_message_age = now - head_message_timestamp)
-                                    }
-                                    writeQueueMetrics(writer, q, "instance" to instance,
-                                            "vhost" to q.vhost,
-                                            "queue" to q.name)
-                                }
-                            }
-                        }
+            for (buffer in readChannel) {
+                val bytes = buffer.bytes
+                (p.nonBlockingInputFeeder as ByteArrayFeeder)
+                        .feedInput(bytes, 0, bytes.size)
+                while (true) {
+                    val ev = p.nextToken() ?: break
+                    if (ev == JsonToken.NOT_AVAILABLE) {
+                        break
                     }
+                    processEvent(p, objBuffer, writer, endpoint)
                 }
             }
-        } finally {
-            socket.close()
+
+            p.nonBlockingInputFeeder.endOfInput()
+            while (true) {
+                val ev = p.nextToken() ?: break
+                if (ev == JsonToken.NOT_AVAILABLE) {
+                    error("NOT_AVAILABLE after endOfInput")
+                }
+                processEvent(p, objBuffer, writer, endpoint)
+            }
+        }
+    }
+
+    private suspend fun processEvent(
+            p: JsonParser, objBuffer: JsonObjectBuffer,
+            writer: MetricWriter, endpoint: String
+    ) {
+        objBuffer.processEvent(p)?.let {
+            val now = System.currentTimeMillis()
+            when (endpoint) {
+                "exchanges" -> {
+                    val x = exchangeObjectReader.readValue<Exchange>(it.asParserOnFirstToken())
+                    writeExchangeMetrics(writer, x, "instance" to instance,
+                            "vhost" to x.vhost,
+                            "exchange" to x.name)
+                }
+                else -> {
+                    val q = with(queueObjectReader.readValue<Queue>(it.asParserOnFirstToken())) {
+                        if (head_message_timestamp == null) this
+                        else this.copy(head_message_age = now - head_message_timestamp)
+                    }
+                    writeQueueMetrics(writer, q, "instance" to instance,
+                            "vhost" to q.vhost,
+                            "queue" to q.name)
+                }
+            }
         }
     }
 }

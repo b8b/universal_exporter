@@ -1,7 +1,6 @@
 /universal_exporter.conf
 
-/build
-/.gradle
+/target
 
 /*.iml
 /.idea

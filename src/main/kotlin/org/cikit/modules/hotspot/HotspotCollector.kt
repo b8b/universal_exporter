@@ -1,14 +1,14 @@
 package org.cikit.modules.hotspot
 
+import io.prometheus.client.CollectorRegistry
+import io.prometheus.client.hotspot.DefaultExports
+import io.vertx.core.Vertx
 import org.cikit.core.Collector
 import org.cikit.core.MetricType
 import org.cikit.core.MetricValue
 import org.cikit.core.MetricWriter
-import io.prometheus.client.CollectorRegistry
-import io.prometheus.client.hotspot.DefaultExports
-import io.vertx.core.Vertx
 
-class HotspotCollector(private val vertx: Vertx) : Collector {
+class HotspotCollector(private val vx: Vertx) : Collector {
 
     override val instance: String
         get() = "local"
@@ -18,7 +18,8 @@ class HotspotCollector(private val vertx: Vertx) : Collector {
     }
 
     override suspend fun export(writer: MetricWriter) {
-        val metricValues = CollectorRegistry.defaultRegistry.metricFamilySamples().asSequence().flatMap { metric ->
+        val samples = CollectorRegistry.defaultRegistry.metricFamilySamples()
+        val metricValues = samples.asSequence().flatMap { metric ->
             metric.samples.asSequence().map { sample ->
                 MetricValue(
                         metric.name,

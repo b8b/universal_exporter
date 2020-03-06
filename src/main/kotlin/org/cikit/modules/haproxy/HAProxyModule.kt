@@ -1,11 +1,26 @@
 package org.cikit.modules.haproxy
 
-import com.typesafe.config.Config
 import io.vertx.core.Vertx
-import org.cikit.core.Collector
+import io.vertx.core.json.JsonObject
 import org.cikit.core.ModuleAdapter
+import java.net.URL
+
+data class HAProxyConfig(val instance: String, val endpoints: List<URL>)
 
 class HAProxyModule : ModuleAdapter("haproxy") {
-    override val collectorFactory: ((Vertx, Config) -> Collector)? =
-            { vertx, config -> HAProxyCollector(vertx, HAProxyConfig(config)) }
+
+    override val collectorFactory = { vx: Vertx, config: JsonObject ->
+        val instance = config.getString("instance") ?: error("instance not set")
+        val defaultEndpoints = config.getString("url")?.let { listOf(URL(it)) }
+        val haProxyConfig = HAProxyConfig(
+                instance = instance,
+                endpoints = config.getJsonArray("endpoints")?.map { c ->
+                    val endpointConfig = c as JsonObject
+                    URL(endpointConfig.getString("url")
+                            ?: error("endpoint url not set"))
+                } ?: defaultEndpoints ?: error("no endpoints configured")
+        )
+        HAProxyCollector(vx, haProxyConfig)
+    }
+
 }

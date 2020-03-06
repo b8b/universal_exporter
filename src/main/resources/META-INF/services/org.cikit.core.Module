@@ -2,4 +2,3 @@ org.cikit.modules.ganglia.GangliaModule
 org.cikit.modules.haproxy.HAProxyModule
 org.cikit.modules.hotspot.HotspotModule
 org.cikit.modules.rabbitmq.RabbitMQModule
-org.cikit.modules.syslog.SyslogModule

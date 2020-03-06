@@ -2,22 +2,19 @@ package org.cikit.modules.ganglia
 
 import com.fasterxml.aalto.AsyncXMLStreamReader
 import com.fasterxml.aalto.stax.InputFactoryImpl
+import io.vertx.core.Vertx
+import io.vertx.core.buffer.Buffer
+import io.vertx.core.net.NetClientOptions
+import io.vertx.core.net.NetSocket
+import io.vertx.core.parsetools.RecordParser
+import io.vertx.core.streams.ReadStream
+import io.vertx.kotlin.coroutines.awaitResult
+import io.vertx.kotlin.coroutines.toChannel
+import kotlinx.coroutines.withTimeout
 import org.cikit.core.Collector
 import org.cikit.core.MetricType
 import org.cikit.core.MetricWriter
-import org.cikit.core.toByteChannel
-import io.vertx.core.Vertx
-import io.vertx.core.buffer.Buffer
-import io.vertx.core.net.NetSocket
-import io.vertx.core.streams.ReadStream
-import io.vertx.kotlin.core.net.NetClientOptions
-import io.vertx.kotlin.coroutines.awaitResult
-import kotlinx.coroutines.experimental.io.readUntilDelimiter
-import kotlinx.coroutines.experimental.io.skipDelimiter
-import kotlinx.coroutines.experimental.withTimeout
 import java.io.IOException
-import java.nio.ByteBuffer
-import java.util.concurrent.TimeUnit
 import javax.xml.stream.XMLStreamConstants
 import javax.xml.stream.XMLStreamReader
 
@@ -43,11 +40,11 @@ private fun String.splitToPair(string: String): Pair<String, String>? {
     }
 }
 
-class GangliaCollector(private val vertx: Vertx, private val config: GangliaConfig) : Collector {
+class GangliaCollector(private val vx: Vertx, private val config: GangliaConfig) : Collector {
 
     override val instance: String get() = config.instance
 
-    private val client = vertx.createNetClient(NetClientOptions(connectTimeout = 3000))
+    private val client = vx.createNetClient(NetClientOptions().setConnectTimeout(3000))
 
     private suspend fun metricValue(writer: MetricWriter, metricInfo: MutableMetricInfo) {
         val metric = (metricInfo.name ?: return) to (metricInfo.value ?: return)
@@ -225,8 +222,16 @@ class GangliaCollector(private val vertx: Vertx, private val config: GangliaConf
         val metricInfo = MutableMetricInfo()
         val (_, socket) = connect()
         try {
-            withTimeout(3, TimeUnit.SECONDS) {
-                val readChannel = (socket as ReadStream<Buffer>).toByteChannel(vertx)
+            withTimeout(3_000L) {
+                val readChannel = RecordParser
+                        .newDelimited("\n", socket as ReadStream<Buffer>)
+                        .toChannel(vx)
+
+                //skip DTD
+                for (buffer in readChannel) {
+                    val line = buffer.toString(Charsets.UTF_8)
+                    if (line.trim() == "]>") break
+                }
 
                 val xif = InputFactoryImpl()
                 xif.configureForLowMemUsage()
@@ -234,26 +239,9 @@ class GangliaCollector(private val vertx: Vertx, private val config: GangliaConf
                 reader.config.setXmlEncoding("US_ASCII")
                 reader.config.setXMLResolver { _, _, _, _ -> null }
 
-                val buffer = ByteArray(1024 * 4)
-
-                //skip DTD
-                val delimiter = ByteBuffer.wrap("]>".toByteArray(Charsets.US_ASCII))
-                val dst = ByteBuffer.wrap(buffer)
-                if (readChannel.readUntilDelimiter(delimiter, dst) < dst.limit()) {
-                    //delimiter found -> skip
-                    readChannel.skipDelimiter(delimiter)
-                } else {
-                    //feed to parser
-                    reader.inputFeeder.feedInput(buffer, 0, dst.position())
-                }
-
-                while (true) {
-                    val read = readChannel.readAvailable(buffer)
-                    if (read < 0) {
-                        reader.inputFeeder.endOfInput()
-                    } else {
-                        reader.inputFeeder.feedInput(buffer, 0, read)
-                    }
+                for (buffer in readChannel) {
+                    val bytes = buffer.bytes
+                    reader.inputFeeder.feedInput(bytes, 0, bytes.size)
                     while (reader.hasNext()) {
                         val ev = reader.next()
                         if (ev == AsyncXMLStreamReader.EVENT_INCOMPLETE) {
@@ -261,9 +249,15 @@ class GangliaCollector(private val vertx: Vertx, private val config: GangliaConf
                         }
                         processEvent(reader, writer, metricInfo)
                     }
-                    if (read < 0) {
-                        break
+                }
+
+                reader.inputFeeder.endOfInput()
+                while (reader.hasNext()) {
+                    val ev = reader.next()
+                    if (ev == AsyncXMLStreamReader.EVENT_INCOMPLETE) {
+                        error("EVENT_INCOMPLETE after endOfInput()")
                     }
+                    processEvent(reader, writer, metricInfo)
                 }
             }
         } finally {

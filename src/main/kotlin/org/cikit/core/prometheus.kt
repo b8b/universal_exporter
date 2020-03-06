@@ -1,7 +1,7 @@
 package org.cikit.core
 
-import kotlinx.coroutines.experimental.io.ByteWriteChannel
-import kotlinx.coroutines.experimental.io.writeStringUtf8
+import io.vertx.core.buffer.Buffer
+import kotlinx.coroutines.channels.SendChannel
 import java.io.StringWriter
 
 const val PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
@@ -106,7 +106,7 @@ fun MetricValue.writeAsPrometheusText(writer: Appendable, withHeader: Boolean = 
     writer.appendln()
 }
 
-class PrometheusMetricWriter(private val channel: ByteWriteChannel) : MetricWriter {
+class PrometheusMetricWriter(private val channel: SendChannel<Buffer>) : MetricWriter {
 
     private val metricSet = mutableSetOf<String>()
 
@@ -118,7 +118,7 @@ class PrometheusMetricWriter(private val channel: ByteWriteChannel) : MetricWrit
         }
         StringWriter().let {
             v.writeAsPrometheusText(it, withHeader)
-            channel.writeStringUtf8(it.toString())
+            channel.send(Buffer.buffer(it.toString()))
         }
         if (withHeader) metricSet.add(v.name)
     }

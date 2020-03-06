@@ -2,33 +2,49 @@ package org.cikit.modules.haproxy
 
 import io.vertx.core.Vertx
 import io.vertx.core.buffer.Buffer
-import io.vertx.core.net.NetSocket
+import io.vertx.core.http.HttpClient
+import io.vertx.core.http.HttpClientOptions
+import io.vertx.core.http.HttpClientResponse
+import io.vertx.core.parsetools.RecordParser
 import io.vertx.core.streams.ReadStream
-import io.vertx.core.streams.WriteStream
-import io.vertx.kotlin.core.net.NetClientOptions
-import io.vertx.kotlin.coroutines.awaitResult
+import io.vertx.kotlin.coroutines.dispatcher
 import io.vertx.kotlin.coroutines.toChannel
-import kotlinx.coroutines.experimental.io.readUTF8Line
-import kotlinx.coroutines.experimental.withTimeout
-import org.cikit.core.*
-import java.io.IOException
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+import org.cikit.core.Collector
+import org.cikit.core.MetricType
+import org.cikit.core.MetricWriter
+import org.slf4j.LoggerFactory
 import java.net.URL
-import java.util.concurrent.TimeUnit
 
-private suspend fun MetricWriter.metricValueIfNonNull(name: String, value: String?,
-                                                                     type: MetricType,
-                                                                     description: String,
-                                                                     vararg fields: Pair<String, String>) {
+private suspend fun MetricWriter.metricValueIfNonNull(
+        name: String, value: String?,
+        type: MetricType,
+        description: String,
+        vararg fields: Pair<String, String>
+) {
     if (value != null && !value.isBlank()) {
         metricValue(name, value.toLong(), type, description, *fields)
     }
 }
 
-class HAProxyCollector(private val vertx: Vertx, val config: HAProxyConfig) : Collector {
+class HAProxyCollector(private val vx: Vertx, val config: HAProxyConfig) : Collector {
 
     override val instance: String get() = config.instance
 
-    private val client = vertx.createNetClient(NetClientOptions(connectTimeout = 3000))
+    private val log = LoggerFactory.getLogger("haproxy")
+
+    private var _client: HttpClient? = null
+    private fun client(): HttpClient {
+        return _client ?: let {
+            val newClient = vx.createHttpClient(HttpClientOptions()
+                    .setConnectTimeout(3000))
+            _client = newClient
+            newClient
+        }
+    }
 
     private suspend fun writeMetrics(writer: MetricWriter, record: Map<String, String>,
                                      vararg fields: Pair<String, String>) {
@@ -71,66 +87,67 @@ class HAProxyCollector(private val vertx: Vertx, val config: HAProxyConfig) : Co
                 MetricType.Counter, "other responses", *fields)
     }
 
-    private suspend fun connect(): Pair<URL, NetSocket> {
-        for (url in config.endpoints) {
-            try {
-                val port = if (url.port <= 0) 80 else url.port
-                val socket = awaitResult<NetSocket> {
-                    client.connect(port, url.host, it)
-                }
-                return Pair(url, socket)
-            } catch (ex: IOException) {
-                if (url === config.endpoints.last()) {
-                    throw ex
-                }
+    private suspend fun connect(): Pair<URL, HttpClientResponse> {
+        val respAvailChannel = Channel<HttpClientResponse>()
+        val url = config.endpoints.random()
+        val port = if (url.port <= 0) 80 else url.port
+        val uri = url.path.removeSuffix("/;csv;norefresh") +
+                "/;csv;norefresh"
+        log.debug("[${url.host}:$port] GET $uri")
+        val req = client().get(port, url.host, uri) { resp ->
+            GlobalScope.launch(vx.dispatcher()) {
+                respAvailChannel.send(resp)
             }
         }
-        throw IllegalStateException()
+        req.exceptionHandler { ex ->
+            respAvailChannel.close(ex)
+        }
+        req.end()
+        return Pair(url, respAvailChannel.receive())
     }
 
     override suspend fun export(writer: MetricWriter) {
-        val (_, socket) = connect()
-        try {
-            withTimeout(3, TimeUnit.SECONDS) {
-                val sendChannel = (socket as WriteStream<Buffer>).toChannel(vertx)
-                sendChannel.send(Buffer.buffer("GET /;csv;norefresh HTTP/1.0\r\n\r\n"))
+        withTimeout(3_000L) {
+            val (_, socket) = connect()
 
-                val readChannel = (socket as ReadStream<Buffer>).toByteChannel(vertx)
-
-                //read http headers
-                readHeaders(readChannel)
-
-                //read csv headers
-                val firstLine = readChannel.readUTF8Line() ?: throw IllegalStateException()
-                val headers = firstLine.trimStart('#')
-                        .splitToSequence(',')
-                        .map { it.trim() }
-                        .toList()
-                //read csv lines
-                while (true) {
-                    val line = readChannel.readUTF8Line()
-                    if (line == null || line.isEmpty()) {
-                        break
-                    }
-                    val record = line
-                            .splitToSequence(',')
-                            .mapIndexed { i, s -> headers[i] to s.trim() }
-                            .toMap()
-                    val pxname = record["pxname"]
-                    val svname = record["svname"]
-                    if (pxname == null || svname == null) {
-                        continue
-                    }
-                    val fields = when (svname) {
-                        "FRONTEND" -> arrayOf("frontend" to pxname)
-                        "BACKEND" -> arrayOf("backend" to pxname)
-                        else -> arrayOf("backend" to pxname, "server" to svname)
-                    }
-                    writeMetrics(writer, record, *fields, "instance" to instance)
-                }
+            //check status
+            if (socket.statusCode() != 200) {
+                error("haproxy respond with status ${socket.statusCode()}")
             }
-        } finally {
-            socket.close()
+
+            val readChannel = RecordParser
+                    .newDelimited("\n", socket as ReadStream<Buffer>)
+                    .toChannel(vx)
+
+            //read csv headers
+            val firstLine = readChannel.receive()
+            val headers = firstLine.toString(Charsets.UTF_8)
+                    .trimStart('#')
+                    .splitToSequence(',')
+                    .map { it.trim() }
+                    .toList()
+            //read csv lines
+            for (buffer in readChannel) {
+                val line = buffer.toString(Charsets.UTF_8)
+                if (line == null || line.isEmpty()) {
+                    break
+                }
+                val record = line
+                        .splitToSequence(',')
+                        .mapIndexed { i, s -> headers[i] to s.trim() }
+                        .toMap()
+                val pxname = record["pxname"]
+                val svname = record["svname"]
+                if (pxname == null || svname == null) {
+                    continue
+                }
+                val fields = when (svname) {
+                    "FRONTEND" -> arrayOf("frontend" to pxname)
+                    "BACKEND" -> arrayOf("backend" to pxname)
+                    else -> arrayOf("backend" to pxname, "server" to svname)
+                }
+                writeMetrics(writer, record, *fields, "instance" to instance)
+            }
         }
     }
 
