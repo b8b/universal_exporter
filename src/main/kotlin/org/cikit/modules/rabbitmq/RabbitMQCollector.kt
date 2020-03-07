@@ -44,7 +44,7 @@ private data class Queue(
         val message_stats: QueueMessageStats?
 )
 
-class RabbitMQCollector(private val vx: Vertx, val config: RabbitMQConfig) : Collector {
+class RabbitMQCollector(private val vx: Vertx, private val config: RabbitMQConfig) : Collector {
 
     override val instance: String get() = config.instance
 

@@ -6,8 +6,8 @@ import org.cikit.core.ModuleAdapter
 
 class HotspotModule : ModuleAdapter("hotspot") {
 
-    override val collectorFactory = { vx: Vertx, _: JsonObject ->
-        HotspotCollector(vx)
+    override val collectorFactory = { _: Vertx, _: JsonObject ->
+        HotspotCollector()
     }
 
 }

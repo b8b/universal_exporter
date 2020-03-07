@@ -30,7 +30,7 @@ private suspend fun MetricWriter.metricValueIfNonNull(
     }
 }
 
-class HAProxyCollector(private val vx: Vertx, val config: HAProxyConfig) : Collector {
+class HAProxyCollector(private val vx: Vertx, private val config: HAProxyConfig) : Collector {
 
     override val instance: String get() = config.instance
 

@@ -8,7 +8,7 @@ import org.cikit.core.MetricType
 import org.cikit.core.MetricValue
 import org.cikit.core.MetricWriter
 
-class HotspotCollector(private val vx: Vertx) : Collector {
+class HotspotCollector : Collector {
 
     override val instance: String
         get() = "local"

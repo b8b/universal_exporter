@@ -1,5 +1,8 @@
 package org.cikit.core
 
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.file
@@ -48,7 +51,9 @@ private class UniversalExporter : CliktCommand(
         LoggerFactory.getLogger(io.vertx.core.logging.LoggerFactory::class.java)
 
         val config = configFile?.let { f ->
-            JsonObject(f.readText()).mapTo(Config::class.java)
+            YAMLFactory().createParser(f).use { p ->
+                jacksonObjectMapper().readValue<Config>(p)
+            }
         } ?: Config()
 
         configureLogging(config.log?.file?.let { Paths.get(it) })
@@ -57,7 +62,7 @@ private class UniversalExporter : CliktCommand(
 
 }
 
-fun Route.coroutineHandler(timeout: Long? = 10000L, fn: suspend (RoutingContext) -> Unit) {
+fun Route.coroutineHandler(timeout: Long? = 10_000L, fn: suspend (RoutingContext) -> Unit) {
     handler { ctx ->
         val job = GlobalScope.launch(ctx.vertx().dispatcher()) {
             try {

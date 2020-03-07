@@ -21,8 +21,7 @@ class JsonObjectBuffer {
 
     fun processEvent(p: JsonParser): TokenBuffer? {
         var result: TokenBuffer? = null
-        val token = p.currentToken()
-        when (token) {
+        when (p.currentToken()) {
             JsonToken.START_OBJECT -> {
                 (buffer ?: createBuffer(p)).copyCurrentEvent(p)
                 objectDepth++

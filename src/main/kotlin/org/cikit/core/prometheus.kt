@@ -10,9 +10,8 @@ fun checkPrometheusMetricName(name: String): Boolean {
     if (name.isEmpty()) {
         return false
     }
-    for (index in 0 until name.length) {
-        val c = name[index]
-        val valid = when (c) {
+    for (index in name.indices) {
+        val valid = when (name[index]) {
             'x' -> index == 0 || name[index - 1] != ':'
             in 'a'..'z' -> true
             '_' -> true
@@ -30,9 +29,8 @@ fun checkPrometheusLabelName(name: String): Boolean {
     if (name.isEmpty()) {
         return false
     }
-    for (index in 0 until name.length) {
-        val c = name[index]
-        val valid = when (c) {
+    for (index in name.indices) {
+        val valid = when (name[index]) {
             in 'a'..'z' -> true
             '_' -> index != 1 || name[0] != '_'
             in 'A' .. 'Z' -> true
