@@ -6,13 +6,21 @@ import org.cikit.core.ModuleAdapter
 import java.net.URL
 import java.util.*
 
-data class RabbitMQConfig(val instance: String, val endpoints: List<RabbitMQEndpoint>)
+data class RabbitMQConfig(
+        val instance: String,
+        val labels: Map<String, String>,
+        val endpoints: List<RabbitMQEndpoint>
+)
+
 data class RabbitMQEndpoint(val url: URL, val encodedCredentials: String)
 
 class RabbitMQModule : ModuleAdapter("rabbitmq") {
 
     override val collectorFactory = { vx: Vertx, config: JsonObject ->
         val instance = config.getString("instance") ?: error("instance not set")
+        val labels = config.getJsonObject("labels")?.map { o ->
+            o.key to o.value.toString()
+        }?.toMap() ?: emptyMap()
         val defaultUsername = config.getString("username")
         val defaultPassword = config.getString("password")
         val defaultUrl = config.getString("url")
@@ -30,6 +38,7 @@ class RabbitMQModule : ModuleAdapter("rabbitmq") {
         }
         val rabbitMQConfig = RabbitMQConfig(
                 instance = instance,
+                labels = labels,
                 endpoints = config.getJsonArray("endpoints")?.map { c ->
                     val endpointConfig = c as JsonObject
                     val url = endpointConfig.getString("url")

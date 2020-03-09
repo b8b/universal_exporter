@@ -145,7 +145,7 @@ class HAProxyCollector(private val vx: Vertx, private val config: HAProxyConfig)
                     "FRONTEND" -> arrayOf("frontend" to pxname)
                     "BACKEND" -> arrayOf("backend" to pxname)
                     else -> arrayOf("backend" to pxname, "server" to svname)
-                }
+                } + config.labels.map { (k, v) -> k to v }.toTypedArray()
                 writeMetrics(writer, record, *fields, "instance" to instance)
             }
         }

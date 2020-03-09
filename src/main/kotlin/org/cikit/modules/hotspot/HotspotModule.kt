@@ -6,8 +6,11 @@ import org.cikit.core.ModuleAdapter
 
 class HotspotModule : ModuleAdapter("hotspot") {
 
-    override val collectorFactory = { _: Vertx, _: JsonObject ->
-        HotspotCollector()
+    override val collectorFactory = { _: Vertx, config: JsonObject ->
+        val labels = config.getJsonObject("labels")?.map { o ->
+            o.key to o.value.toString()
+        }?.toMap() ?: emptyMap()
+        HotspotCollector(labels)
     }
 
 }

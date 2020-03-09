@@ -2,13 +2,12 @@ package org.cikit.modules.hotspot
 
 import io.prometheus.client.CollectorRegistry
 import io.prometheus.client.hotspot.DefaultExports
-import io.vertx.core.Vertx
 import org.cikit.core.Collector
 import org.cikit.core.MetricType
 import org.cikit.core.MetricValue
 import org.cikit.core.MetricWriter
 
-class HotspotCollector : Collector {
+class HotspotCollector(val labels: Map<String, String>) : Collector {
 
     override val instance: String
         get() = "local"
@@ -32,7 +31,8 @@ class HotspotCollector : Collector {
                             else -> MetricType.Gauge
                         },
                         metric.help,
-                        fields = sample.labelNames.mapIndexed { i, k -> k to sample.labelValues[i] })
+                        fields = labels.map { (k, v) -> k to v } + sample.labelNames
+                                .mapIndexed { i, k -> k to sample.labelValues[i] })
             }
         }.toList()
         metricValues.forEach {

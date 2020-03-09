@@ -49,6 +49,9 @@ class GangliaCollector(private val vx: Vertx, private val config: GangliaConfig)
     private suspend fun metricValue(writer: MetricWriter, metricInfo: MutableMetricInfo) {
         val metric = (metricInfo.name ?: return) to (metricInfo.value ?: return)
         val fields = mutableListOf("instance" to instance)
+        for ((k, v) in config.labels) {
+            fields.add(k to v)
+        }
         val name: String = when (metricInfo.group) {
             // sflow httpd metrics
             "httpd" -> {

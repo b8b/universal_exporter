@@ -170,6 +170,7 @@ class RabbitMQCollector(private val vx: Vertx, private val config: RabbitMQConfi
                 "exchanges" -> {
                     val x = exchangeObjectReader.readValue<Exchange>(it.asParserOnFirstToken())
                     writeExchangeMetrics(writer, x, "instance" to instance,
+                            *(config.labels.map { (k, v) -> k to v }.toTypedArray()),
                             "vhost" to x.vhost,
                             "exchange" to x.name)
                 }
@@ -179,6 +180,7 @@ class RabbitMQCollector(private val vx: Vertx, private val config: RabbitMQConfi
                         else this.copy(head_message_age = now - head_message_timestamp)
                     }
                     writeQueueMetrics(writer, q, "instance" to instance,
+                            *(config.labels.map { (k, v) -> k to v }.toTypedArray()),
                             "vhost" to q.vhost,
                             "queue" to q.name)
                 }
