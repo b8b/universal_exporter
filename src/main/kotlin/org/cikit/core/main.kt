@@ -74,7 +74,7 @@ fun Route.coroutineHandler(timeout: Long? = 10_000L, fn: suspend (RoutingContext
                     }
                 }
             } catch (e: Exception) {
-                log.warn("fail: $e")
+                log.warn(ctx.request().path() + ": fail: $e")
                 ctx.fail(e)
             }
         }
@@ -110,7 +110,13 @@ private fun start(config: Config) {
             val ch = ctx.response().toChannel(vx)
             try {
                 val metricWriter = PrometheusMetricWriter(ch)
-                collectors.forEach { it.export(metricWriter) }
+                collectors.forEach { collector ->
+                    try {
+                        collector.export(metricWriter)
+                    } catch (ex: Exception) {
+                        log.warn("$endpoint[${collector.instance}]: fail: $ex")
+                    }
+                }
             } finally {
                 ch.close()
             }
