@@ -205,8 +205,10 @@ class GangliaCollector(private val vx: Vertx, private val config: GangliaConfig)
     private suspend fun connect(): Pair<GangliaEndpoint, NetSocket> {
         for (c in config.endpoints) {
             try {
-                val socket = awaitResult<NetSocket> {
-                    client.connect(c.port, c.host, it)
+                val socket = withTimeout(3_000L) {
+                    awaitResult<NetSocket> {
+                        client.connect(c.port, c.host, it)
+                    }
                 }
                 return Pair(c, socket)
             } catch (ex: IOException) {
@@ -222,7 +224,7 @@ class GangliaCollector(private val vx: Vertx, private val config: GangliaConfig)
         val metricInfo = MutableMetricInfo()
         val (_, socket) = connect()
         try {
-            withTimeout(3_000L) {
+            withTimeout(13_000L) {
                 val readChannel = RecordParser
                         .newDelimited("\n", socket as ReadStream<Buffer>)
                         .toChannel(vx)
